@@ -1,0 +1,4 @@
+// Dentro de Route::prefix('servicio-tecnico/hojas-salida') en el grupo api/mcp.
+// McpHojasSalidaController ya está importado en routes/api.php.
+Route::post('{id}/instrumentos/{instrumentoId}/datos', [McpHojasSalidaController::class, 'editarInstrumento'])
+    ->whereNumber(['id', 'instrumentoId'])->middleware('throttle:20,1');

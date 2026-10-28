@@ -18,7 +18,7 @@ class VentasEditarPreciosCotizacionVentaTool extends Tool
 
     protected string $title = 'Editar precios de cotización por venta';
 
-    protected string $description = 'Cambia el importe unitario de uno o varios productos de una cotización por venta y recalcula subtotal, IGV y total. No funciona si la cotización está Aceptada, Rechazada o Finalizada (son definitivas). Si un importe queda fuera del rango precio mínimo/máximo del producto, la respuesta incluye "advertencias": menciónalas al usuario. ANTES de llamarla: consulta la cotización con la herramienta de ver, muestra al usuario exactamente qué vas a cambiar (valor actual y valor nuevo) y pide su confirmación explícita. Solo se pueden modificar cotizaciones propias, con rol Asesor de Ventas o Jefe de Ventas.';
+    protected string $description = 'Cambia el importe unitario de uno o varios productos de una cotización por venta y recalcula subtotal, IGV del 18 % y total con IGV; redondea a dos decimales el precio convertido y cada línea. El importe se expresa sin IGV en la moneda del producto. No funciona si la cotización está Aceptada, Rechazada o Finalizada (son definitivas). Si un importe queda fuera del rango precio mínimo/máximo del producto, la respuesta incluye "advertencias": menciónalas al usuario. ANTES de llamarla: consulta la cotización con la herramienta de ver, muestra al usuario exactamente qué vas a cambiar (valor actual y valor nuevo) y pide su confirmación explícita. Solo se pueden modificar cotizaciones propias, con rol Asesor de Ventas o Jefe de Ventas.';
 
     public function schema(JsonSchema $schema): array
     {
