@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -29,11 +30,17 @@ class SistemaClient
         }
 
         $url = config('sistema.api_url') . '/mcp/' . ltrim($path, '/');
-        $http = Http::withToken((string)$token)->acceptJson()->timeout(15);
+        $http = Http::withToken((string) $token)->acceptJson()->connectTimeout(5)->timeout(15);
 
-        $res = $metodo === 'GET'
-            ? $http->get($url, $datos)
-            : $http->asJson()->post($url, $datos);   // sin reintentos automáticos
+        try {
+            $res = $metodo === 'GET'
+                ? $http->get($url, $datos)
+                : $http->asJson()->post($url, $datos);   // sin reintentos automaticos
+        } catch (ConnectionException $e) {
+            // No propagar errores de transporte que puedan incluir URL o cabeceras.
+            // En particular, NO reintentar un POST: el sistema podria haberlo procesado.
+            throw new RuntimeException('conexion-sistema', 503);
+        }
 
         $status = $res->status();
 
@@ -52,7 +59,13 @@ class SistemaClient
             throw new RuntimeException('error-sistema', $status);
         }
 
-        return $res->json() ?? [];
+        $contenido = $res->json();
+        if (! is_array($contenido)) {
+            // Un HTTP 2xx con JSON vacio o escalar no satisface el contrato MCP.
+            throw new RuntimeException('respuesta-invalida', 502);
+        }
+
+        return $contenido;
     }
 
     private function revocar(): void
