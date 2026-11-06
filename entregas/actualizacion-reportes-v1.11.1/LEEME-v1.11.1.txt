@@ -1,0 +1,151 @@
+Actualización v1.11.1 — Informes y resultados de servicio técnico
+=================================================================
+Reemplaza la entrega v1.11.0; también puede instalarse sobre v1.10.2. Gateway actualizado localmente; sistema central NO modificado.
+Instalar primero SISTEMA y después GATEWAY. No se ha desplegado en producción.
+
+CAMBIO DE NOMENCLATURA v1.11.1
+El usuario llama INFORME al registro de fallas detectadas y trabajos sugeridos.
+La herramienta publicada es servicio_tecnico_registrar_informe y su clase es
+ServicioTecnicoRegistrarInformeTool. Ya no se registra la herramienta anterior.
+RESULTADO sigue siendo el registro de trabajos realizados y observaciones finales.
+La búsqueda MCP usa fase=informe o fase=resultado; el gateway traduce informe a
+la fase diagnostico que espera el sistema central. Los endpoints, modelos,
+campos JSON técnicos y datos existentes permanecen compatibles con v1.11.0.
+Las instrucciones del servidor explican cómo presentar las claves internas de
+ diagnóstico al usuario como informe, y las de informe final como resultado.
+El valor de catálogo Diagnóstico Técnico NO cambia.
+
+SI YA INSTALASTE v1.11.0
+Solo actualizar gateway/app/Mcp/ y ejecutar los comandos del apartado 4.
+El sistema/ incluido es idéntico al de v1.11.0; no volver a pegar rutas ni config.
+El archivo antiguo ServicioTecnicoRegistrarDiagnosticoTool.php puede eliminarse
+tras instalar el nuevo: ya no está registrado en BalinsaServer.
+Recrear el conector para que deje de mostrar el nombre anterior.
+
+VALIDACIÓN v1.11.1
+17 pruebas específicas de reportes, 80 aserciones: todas aprobadas.
+Sintaxis PHP verificada en los archivos modificados.
+La limitación de la suite completa anterior continúa documentada abajo.
+
+1) HERRAMIENTAS
+- servicio_tecnico_buscar_reportes: tareas con diagnóstico/resultado pendiente.
+- servicio_tecnico_ver_reporte: instrumentos paginados, diagnóstico previo,
+  resultados, acciones permitidas, avance y versión para confirmar cambios.
+- servicio_tecnico_registrar_informe: fallas detectadas y trabajos sugeridos.
+- servicio_tecnico_registrar_resultado: trabajos realizados, observaciones y
+  número de cotización opcional.
+- servicio_tecnico_editar_caracteristicas_reporte: correcciones parciales del
+  instrumento del reporte, antes de que tenga diagnóstico o informe.
+
+Las altas admiten un instrumento existente O un equipo extra encontrado en campo.
+Los IDs se obtienen de la consulta, no se inventan. La tarea es el número de hoja
+ de salida, no el ID del pendiente de Ventas.
+
+2) REGLAS Y ALCANCE
+- Servicio Tecnico y Operaciones: solo tareas asignadas mediante
+  tb_detalles_tarea -> tb_tecnicos_existentes.user_id.
+- Gerencia y Area de TI: acceso total según mcp.roles_acceso_total existente.
+- Por defecto no se amplía Operaciones a tareas ajenas. Para habilitarlo por
+  decisión del responsable, agregar Operaciones a reportes_roles_ve_todo.
+- La configuración vacía deniega acceso ordinario. Roles y escritura se
+  configuran por separado. Registros ajenos se ocultan con 404.
+- Solo tareas pendiente/en_proceso y reportes abiertos admiten escrituras.
+  Diagnóstico existente o informe bloquean otro diagnóstico; un informe
+  existente bloquea otro resultado. Esto también aplica a Gerencia.
+- Resultado NO exige diagnóstico previo y NO cierra ni aprueba la tarea.
+- Se exige confirmado=true y version_actual obtenida en la consulta. Después
+  de cada escritura se vuelve a consultar; un reenvío con versión vieja falla.
+  No reintentar automáticamente tras una respuesta incierta: consultar primero.
+- La transacción bloquea tarea, reporte, instrumentos y registros hijos.
+  Los rechazos revierten el snapshot y los equipos extra.
+- Usuario, nombre del técnico, fecha y estado subido los determina el servidor.
+- Los equipos extra conservan material, clase y tipo_servicio; cuando se omite
+  este último se usa Diagnóstico Técnico o Mantenimiento, como en Vue.
+- Las características se editan SOLO en el snapshot sin registros previos.
+  No se modifican pendientes ni hojas originales; sin snapshot debe corregirse
+  el equipo en el sistema antes del registro. Es más restrictivo que la pantalla.
+- No se adjuntan fotos, aprueban informes, emiten certificados ni eliminan datos.
+  Si se necesitan fotos, hacer ese registro desde la pantalla del sistema.
+- Textos de contexto limitados a 1000 caracteres; textos_recortados avisa si
+  hay más contenido. Las características se limitan a 200 caracteres.
+- Diagnóstico completo para la lista significa cada instrumento con diagnóstico
+  O resultado; se exponen además ambos conteos por separado. Resultados completos
+  significa que todos tienen informe. Se incluyen todos los tipos de servicio,
+  como hacen actualmente DiagnosticoController e InformeController.
+
+3) INSTALACIÓN — SISTEMA (Laravel 10)
+Requisitos existentes (NO incluidos ni reemplazados):
+  Modelos Reporte, ReporteInstrumento, InstrumentoTarea, TareasTecnicos,
+  Diagnostico, InformeFinal; ReporteInstrumentoService; ReporteNumeracionService.
+  Verificar migración de numeración 2026_10_22_000001_add_orden_pdf_to_reportes_instrumentos:
+  reportes.ultimo_orden_pdf y reportes_instrumentos.orden_pdf deben existir.
+
+1. Copiar sistema/app/Http/Controllers/Mcp/McpReportesController.php a la misma
+   ruta relativa del sistema central.
+2. Dentro del array config/mcp.php, agregar sistema/config/reportes-BLOQUE.txt.
+3. Dentro del grupo mcp EXISTENTE en routes/api.php, agregar
+   sistema/routes/reportes-BLOQUE.txt. El grupo debe conservar auth:sanctum,
+   abilities:mcp y throttle:60,1. No crear rutas públicas ni duplicar /mcp.
+4. Ejecutar:
+   php artisan config:clear
+   php artisan optimize:clear
+   php artisan route:list --path=mcp/servicio-tecnico/reportes
+5. Deben aparecer 2 GET y 3 POST. Altas: throttle:10,1; edición: throttle:20,1.
+   No se requieren secretos ni variables de entorno nuevas.
+
+4) INSTALACIÓN — GATEWAY (Laravel 12)
+1. Copiar gateway/app/Mcp/ sobre el gateway v1.10.2, conservando las herramientas
+   anteriores. El ZIP es incremental: no elimina ni sustituye toda la carpeta.
+   BalinsaServer pasa a v1.11.1 y registra cinco herramientas adicionales.
+2. Ejecutar:
+   composer2 dump-autoload -o --no-scripts
+   php artisan optimize:clear
+3. Quitar y volver a crear los conectores Claude/ChatGPT para renovar el catálogo.
+   No hacer composer install/update en el servidor.
+
+5) VALIDACIÓN REAL PENDIENTE
+Con un token de prueba con habilidad mcp en un entorno de pruebas:
+- GET /api/mcp/servicio-tecnico/reportes?fase=diagnostico&limite=2
+- GET /api/mcp/servicio-tecnico/reportes/{tarea_id}
+- POST /api/mcp/servicio-tecnico/reportes/{tarea_id}/diagnosticos
+  Cuerpo: instrumento_tarea_id O reporte_instrumento_id, fallas_detectadas,
+  trabajos_sugeridos opcional, confirmado=true y version_actual de la consulta.
+- POST /api/mcp/servicio-tecnico/reportes/{tarea_id}/resultados
+  Cuerpo: referencia del instrumento, trabajos_realizados,
+  observaciones_finales y n_cotizacion opcionales, confirmado y version_actual.
+- Para equipo extra sustituir la referencia por instrumento_extra con
+  tipo_instrumento obligatorio y las características conocidas.
+- Probar rol sin acceso, tarea ajena, tarea propia, Gerencia, reporte cerrado,
+  reenvío duplicado y dos solicitudes concurrentes en MySQL.
+- Verificar agent_actions en gateway y mcp.reportes en el log del sistema.
+- Revocar el token temporal al terminar.
+- Inspector y conectores: “Busca mis tareas con resultados pendientes”,
+  “Consulta los instrumentos de la tarea …”, “Registra este diagnóstico …”.
+  Debe consultar, resumir y pedir confirmación antes de registrar.
+
+6) PRUEBAS EJECUTADAS EN DESARROLLO
+- php -l: correctos los 9 archivos PHP modificados/nuevos de implementación y pruebas.
+- 12 pruebas del controlador, 54 aserciones, con modelos y servicios reales del
+  sistema central y esquema SQLite en memoria: acceso por rol, ajenos, propios,
+  Gerencia, cierres, snapshot/numeración, duplicados, extras, validación, paginación,
+  configuración y edición parcial. Nunca se conectan a la base de datos real.
+- 5 pruebas del gateway, 26 aserciones: nombre informe, traducción de fase, esquemas, listas blancas, rutas,
+  campos anidados y conservación de valores vacíos en edición.
+- Suite completa ejecutada en v1.11.0: 21 pruebas, 88 aserciones, 20 pasan y una falla en la prueba
+  existente HojasSalidaToolsTest::test_instrument_schema_and_request_match_backend_pagination.
+  Su expectativa omite instrumento_id, numero_pdf y grupo_pdf nulos. No se
+  modificaron esa prueba ni la herramienta de hojas de salida.
+- No verificado todavía: middleware HTTP real, tokens, MySQL concurrente,
+  esquema completo de producción, Inspector y Claude/ChatGPT.
+
+Repetir las nuevas pruebas desde la raíz del gateway:
+  php vendor/phpunit/phpunit/phpunit tests/Unit/ReportesToolsTest.php
+  php vendor/phpunit/phpunit/phpunit tests/Feature/ReportesSistemaTest.php
+La segunda carga código de ../Sistema_Balinsa_23_10, o de MCP_CENTRAL_PATH.
+Si no está disponible, se marca omitida; no cuenta como una validación exitosa.
+
+7) FUENTES CONSULTADAS
+resources/js/Pages/Reportes/RegistrarDiagnostico.vue y RegistrarResultados.vue;
+DiagnosticoController, InformeController, HservicioController::create,
+ReportesController::create, modelos y servicios indicados arriba.
+Se añade McpReportesController independiente sin modificar controladores de UI.

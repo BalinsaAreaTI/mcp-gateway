@@ -1,0 +1,7 @@
+
+    // Detalle Show.vue: permisos separados para edición de textos y ficha.
+    'detalle_reportes_roles_edicion' => ['Servicio Tecnico', 'Operaciones', 'Administracion'],
+    'detalle_reportes_roles_supervisor' => ['Operaciones', 'Administracion'],
+    'detalle_reportes_roles_finalizar' => ['Operaciones'],
+    'reporte_tecnico_pdf_roles' => ['Servicio Tecnico', 'Operaciones', 'Administracion', 'Asesor de Ventas', 'Jefe de Ventas'],
+    'reporte_tecnico_pdf_enlace_minutos' => 10,

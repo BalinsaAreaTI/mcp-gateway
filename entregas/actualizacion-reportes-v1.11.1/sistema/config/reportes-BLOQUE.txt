@@ -1,0 +1,6 @@
+// Dentro del array de config/mcp.php. No reemplazar las claves existentes.
+// Técnicos y Operaciones: tareas asignadas por tb_detalles_tarea.
+// Gerencia / Area de TI heredan roles_acceso_total ya configurado.
+'reportes_roles' => ['Servicio Tecnico', 'Operaciones'],
+'reportes_roles_escritura' => ['Servicio Tecnico', 'Operaciones'],
+'reportes_roles_ve_todo' => [],

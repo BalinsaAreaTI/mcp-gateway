@@ -1,0 +1,22 @@
+[
+  {
+    "path": "app/Http/Controllers/Mcp/McpCertificacionesController.php",
+    "before": "6cfec06b0beeade89c4237ff48ab6c4cebf6f886e68661ff5d33eda30f9966da",
+    "after": "32f57059a3a78c9e12a322c78611c3cee1ae84a397a3f71592e903a577c7b338"
+  },
+  {
+    "path": "app/Http/Controllers/Mcp/McpCertificacionesEscrituraController.php",
+    "before": "e10dd9dac9718a477346274c5a488d2a2cad873f3632bb64a017201e3a021236",
+    "after": "f10fbe6ad8936ba470d47ce8ab128e783f0bd76dad7f0f260791d70ea9d2f350"
+  },
+  {
+    "path": "app/Services/CertificacionSolicitudPdf.php",
+    "before": "5151395d5d919018c83e8725cfd15a61332140a13c7f45781e2ac4471af6bb86",
+    "after": "ea896171ac8f4f9bed37780001ceee6f37273cfdfb44bff8ab5fc70d2abe52c9"
+  },
+  {
+    "path": "routes/api.php",
+    "before": "8c13e5f980846d27c75b7bb683e59dc9b08228e92300a3f715a07f10b019078f",
+    "after": "cc93d89fbf77941ce3a5ec0339bfdb6c881277c3ab4bfed2eee15fda0c592ee5"
+  }
+]

@@ -1,0 +1,8 @@
+// Dentro del grupo mcp existente (auth:sanctum, abilities:mcp, throttle:60,1).
+Route::prefix('servicio-tecnico/reportes')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Mcp\McpReportesController::class, 'buscar']);
+    Route::get('{id}', [\App\Http\Controllers\Mcp\McpReportesController::class, 'ver'])->whereNumber('id');
+    Route::post('{id}/diagnosticos', [\App\Http\Controllers\Mcp\McpReportesController::class, 'diagnostico'])->whereNumber('id')->middleware('throttle:10,1');
+    Route::post('{id}/resultados', [\App\Http\Controllers\Mcp\McpReportesController::class, 'resultado'])->whereNumber('id')->middleware('throttle:10,1');
+    Route::post('{id}/caracteristicas', [\App\Http\Controllers\Mcp\McpReportesController::class, 'caracteristicas'])->whereNumber('id')->middleware('throttle:20,1');
+});

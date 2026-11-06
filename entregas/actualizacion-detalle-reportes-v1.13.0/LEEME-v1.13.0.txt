@@ -1,0 +1,161 @@
+Actualización v1.13.0 — Acciones del detalle y PDF de reporte técnico
+=================================================================
+Incremental sobre v1.12.0. Cambios aplicados a mcp-gateway y al sistema central
+LOCAL. No se desplegó en producción ni se editaron datos reales.
+
+ESTADO DE ACTIVACIÓN LOCAL
+Al terminar la revisión se encontraron comentadas las herramientas de registro,
+historial y detalle en BalinsaServer::$tools. Se conserva esa configuración
+actual; no se descomentan automáticamente cambios hechos durante las pausas.
+El ZIP conserva el mismo servidor. El código, controladores y rutas están listos,
+pero estas herramientas NO se anuncian al conector mientras sigan comentadas.
+Para habilitar el flujo completo, descomentar las entradas de las secciones
+Informes y resultados, Historial de reportes y Acciones del detalle. Después
+regenerar autoload/limpiar cachés y recrear el conector. No activar otros módulos
+que estén comentados, salvo decisión explícita del responsable.
+
+1. HERRAMIENTAS NUEVAS
+servicio_tecnico_ver_acciones_reporte
+servicio_tecnico_editar_instrumento_reporte
+servicio_tecnico_editar_informe_reporte
+servicio_tecnico_editar_resultado_reporte
+servicio_tecnico_finalizar_reporte
+servicio_tecnico_generar_pdf_reporte
+
+Referencia: Hojaservico/Show.vue y sus modales/controladores.
+Informe = fallas detectadas y trabajos sugeridos (diagnosticos).
+Resultado = trabajos realizados y observaciones finales (informes_finales).
+reporte_id e instrumento_id se obtienen del historial. No usar tarea_id,
+pendiente_id u orden_pdf como sustitutos de esos IDs.
+
+2. EDICIÓN
+Consultar primero ver_acciones_reporte con reporte_id e instrumento_id.
+Mostrar valores actuales -> nuevos y pedir confirmación explícita.
+Enviar confirmado=true, version_actual y únicamente los campos de cambios.
+Los omitidos se conservan; texto vacío borra campos opcionales solo por pedido.
+La versión abarca reporte, instrumentos, informes, resultados, tarea y pendiente.
+Un cambio intermedio exige consultar y confirmar nuevamente. No reintentar a ciegas.
+
+- Ficha: técnico asignado o acceso total. Puede corregirse aunque ya haya informe
+  o resultado, mientras el reporte esté abierto. No modifica la hoja original.
+  Resuelve el vínculo de instrumento de tarea si es único; si es ambiguo, rechaza.
+- Informe/resultado: técnico asignado y propietario (o registro libre);
+  Operaciones/Administracion habilitados como supervisores y acceso total pueden
+  editar registros de otros, conservando su autoría. Los libres se atribuyen al
+  usuario conectado. No se reciben identidades del agente.
+- Reporte cerrado bloquea toda edición; informe liberado bloquea su edición,
+  incluso para Gerencia. Resultado exige trabajos realizados no vacíos.
+- No se alteran fotos, actas, estados de aprobación ni campos omitidos.
+- Finalizar reporte exige permiso/rol y datos completos: resultado no vacío por
+  instrumento; si el servicio es de diagnóstico, basta informe existente.
+  Cambia reporte a cerrado y su tarea a completada. NO finaliza el pendiente.
+  El acta es opcional, como en el controlador original.
+- Las liberaciones/aprobaciones, limpiar/borrar registros y gestionar adjuntos
+  permanecen en el sistema, según la guía general MCP.
+- Herramientas anteriores de registro por tarea siguen disponibles. La edición
+  previa de características conserva su restricción anterior al primer registro;
+  la herramienta nueva reproduce las correcciones del detalle Show.
+
+3. PDF: VER Y DESCARGAR
+Una llamada entrega el PDF de UN instrumento, reuniendo informe y resultado.
+modo=ver -> Content-Disposition inline; modo=descargar -> attachment.
+El agente recibe solo el enlace; el PDF se genera al abrirlo, sin guardarlo.
+
+- Firma relativa de Laravel, enlazada a APP_URL HTTPS, duración 10 minutos
+  (configurable 1-30). Usuario firmado tomado del token, nunca del agente.
+- Ruta WEB sin sesión; valida firma/vencimiento y vuelve a comprobar rol y
+  visibilidad. Solo ignora utm_source, utm_medium, utm_campaign, utm_term,
+  utm_content, fbclid y gclid. Cambiar usuario, instrumento, modo o caducidad
+  invalida el enlace. Quien tenga el enlace puede abrirlo: no compartirlo.
+- Cache-Control private, no-store; Referrer-Policy no-referrer.
+- PDF de solo lectura: también admite reportes cerrados. Exige orden_pdf
+  existente; no asigna numeración ni crea snapshots al consultarlo.
+- Datos reutilizados de ReportesController::apiDetalleReporte. No modifica
+  el controlador original. Duplicados se rechazan para evitar un documento ambiguo.
+- Número AAAA-IDREPORTE-ORDEN, año de created_at o fecha, igual a Vue.
+- Replica datos generales, Balanza/Termómetro/Pesa, textos y dos grupos de fotos.
+  Como el JS actual, no imprime trabajos_sugeridos/observaciones_finales en los
+  bloques principales; imprime fallas_detectadas y trabajos_realizados.
+  Otros tipos de instrumento no tienen tabla de equipo en el generador actual;
+  esta particularidad se conserva para no cambiar el documento por separado.
+- Textos largos se dividen en bloques y repiten encabezado al pasar de página.
+  Los saltos exactos de página pueden diferir de jsPDF; contenido comprobado.
+- Logo y textos de empresa están en config/reporte_tecnico_pdf.php.
+- Imágenes locales bajo carpetas permitidas, realpath verificado, sin HTTP remoto.
+  Límite de 10 MB y 20 millones de píxeles por imagen, reescalado a 1000 px.
+  Las fotos ausentes/inválidas se muestran como Sin Imagen.
+- Se conserva la resolución de rutas de fotoReporteUrl del frontend: nombres
+  simples bajo imagenes_reportes. Las rutas heredadas de otras carpetas pueden
+  aparecer sin imagen, como en la pantalla; no se amplía el acceso a archivos.
+
+4. REQUISITOS Y CONFIGURACIÓN
+Dompdf ya está instalado (barryvdh/laravel-dompdf 3.1).
+HABILITAR gd y mbstring en el PHP que atiende la WEB, además de APP_URL HTTPS.
+En este equipo gd existe pero no está cargado en el PHP CLI por defecto;
+la generación se probó con php -d extension=gd. No se modificó php.ini.
+Si falta gd, el sistema devuelve 422 con una indicación clara al generar imágenes.
+En Hostinger: hPanel -> PHP -> Extensiones -> gd y mbstring.
+Logo existente: public/img/LOGO BALINSA-SIN SOMBRA.png (no incluido en el ZIP).
+No hacen falta migraciones ni claves secretas nuevas.
+
+5. INSTALACIÓN EN OTRO ENTORNO
+SISTEMA primero:
+- Copiar los PHP de sistema/app/, sistema/config/reporte_tecnico_pdf.php y
+  sistema/resources/views/pdf/reporte_tecnico_mcp.blade.php.
+- McpHistorialReportesController incluido solo actualiza el mensaje de acciones;
+  si hay cambios propios, integrar esa frase sin sobrescribirlos.
+- Agregar sistema/config/detalle-reportes-BLOQUE.txt al array config/mcp.php.
+- Agregar detalle-reportes-api-BLOQUE.txt DENTRO del grupo mcp existente
+  (auth:sanctum, abilities:mcp, throttle:60,1). POST añade throttle:20,1.
+- Agregar detalle-reportes-web-BLOQUE.txt FUERA de grupos auth/signed en web.php.
+  La firma relativa y permisos se verifican en McpReporteTecnicoPdfController.
+- php artisan config:clear
+  php artisan optimize:clear
+  php artisan route:list --path=detalle-reportes
+  php artisan route:list --name=mcp.reporte_tecnico.pdf
+
+GATEWAY después:
+- Copiar gateway/app/Mcp/ conservando las herramientas anteriores.
+- composer2 dump-autoload -o --no-scripts
+- php artisan optimize:clear
+- Después de activar las entradas de reportes en $tools, recrear los conectores
+  Claude/ChatGPT para refrescar las herramientas.
+
+Las carpetas locales de este trabajo YA tienen los cambios de código, rutas y
+configuración. No volver a pegar los bloques localmente.
+
+6. VERIFICACIÓN REALIZADA
+- 39 pruebas de reportes en el gateway: 215 aserciones, todas aprobadas.
+- 8 pruebas nuevas de detalle en Laravel 10 del sistema: 54 aserciones, aprobadas.
+  SQLite en memoria; sin acceder a los datos reales. Pruebas PDF usan datos
+  simulados para aislar permisos/firma de la consulta MySQL de la pantalla.
+- Firma relativa, tracking, usuario tomado del token, modo inline/attachment,
+  vencimiento, usuario con rol revocado, URL alterada, edición propia/ajena,
+  informe liberado, reporte cerrado, vinculación ambigua, confirmación y versión.
+- Sintaxis PHP revisada. Seis rutas API autenticadas y una WEB temporal verificadas.
+- 1000 casos capturados desde generarPDF de Show.vue y comparados con calcular()
+  PHP: cero diferencias en numeración, datos generales, equipo y textos comparados.
+  Valores null de celdas normalizados al texto vacío de autoTable.
+- PDFs reales con dompdf: corto, largo y pesa generados. Inspección visual del
+  corto y todas las páginas del caso largo (4 páginas). Verificada extracción
+  completa de 95 repeticiones de cada texto largo, sin pérdida de contenido.
+- No probado aún: token real end-to-end, fotos comerciales reales, apertura desde
+  Claude/ChatGPT, concurrencia MySQL con escrituras simultáneas de la pantalla.
+- La suite global ajena a reportes no se repitió; conserva la incidencia previa
+  documentada de HojasSalidaToolsTest fuera del alcance de esta entrega.
+
+REPETIR PRUEBAS
+Gateway:
+php vendor/phpunit/phpunit/phpunit --filter "DetalleReportes|HistorialReportes|ReportesTools|ReportesSistema"
+Sistema:
+php vendor/phpunit/phpunit/phpunit --do-not-cache-result tests/Feature/DetalleReportesTest.php
+Comparación con frontend (directorio de salida previamente creado):
+node pruebas/paridad.mjs RUTA_SISTEMA RUTA_SALIDA
+php pruebas/paridad.php RUTA_SISTEMA RUTA_ENTREGA/sistema RUTA_SALIDA
+
+7. FRASES DE PRUEBA
+“Muéstrame las acciones del reporte 101, instrumento 21”.
+“Corrige el informe de ese instrumento” -> consulta, resumen, confirmación y edición.
+“Finaliza el reporte 101” -> verifica todos los instrumentos y pide confirmación.
+“Ver el PDF del instrumento 21 del reporte 101” -> enlace temporal modo ver.
+“Descargar ese PDF” -> nuevo enlace firmado modo descargar, no cambiar la URL anterior.

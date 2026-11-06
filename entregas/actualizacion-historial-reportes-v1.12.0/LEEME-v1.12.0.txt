@@ -1,0 +1,146 @@
+Actualización v1.12.0 — Historial de Reportes
+==========================================
+Entrega incremental sobre v1.11.1. Seis herramientas nuevas.
+Aplicado localmente tanto en mcp-gateway como en Sistema_Balinsa_23_10.
+No se desplegó en producción ni se modificaron datos reales.
+
+HERRAMIENTAS
+- servicio_tecnico_buscar_historial_reportes
+- servicio_tecnico_resumen_historial_reportes
+- servicio_tecnico_ver_reporte_historial
+- servicio_tecnico_ver_instrumentos_reporte
+- servicio_tecnico_ver_estado_servicio
+- servicio_tecnico_finalizar_servicio
+
+REFERENCIA Y DISTINCIÓN DE IDENTIFICADORES
+Basado en resources/js/Pages/Hojaservico/Index.vue y en
+ReportesController::getReportesPorFecha, ::verReporte, ::finalizarServicio.
+El historial usa reporte_id (RPT-...); registro por instrumento usa tarea_id;
+finalizar servicio usa pendiente_id. No intercambiar estos identificadores.
+Las herramientas anteriores servicio_tecnico_buscar_reportes y
+servicio_tecnico_ver_reporte siguen disponibles para REGISTRAR por tarea.
+
+Informe = fallas detectadas/trabajos sugeridos (tabla diagnosticos).
+Resultado = trabajos realizados/observaciones (tabla informes_finales).
+Los nuevos conteos cantidad_informes y cantidad_resultados ya usan estos nombres.
+
+LECTURA
+- Fecha del reporte, últimos siete días hasta hoy en America/Lima por defecto.
+- Con solo desde: ese día; con solo hasta: siete días anteriores hasta ese día.
+- Máximo 93 días configurable. Fechas inclusivas.
+- Cliente parcial; número de reporte numérico parcial con prefijo RPT- opcional;
+  número de pendiente parcial sin ceros iniciales; pendiente_id para coincidencia
+  exacta; estado abierto/cerrado.
+- Listas e instrumentos paginados (máximo 20); resumen agrega en SQL sin paginar.
+- La lista permite agrupar por pendiente_id. Cada página o filtro puede contener
+  solo parte de los reportes del servicio: jamás usarla para decidir finalizar.
+- Detalle por reporte_id incluye abiertos y cerrados. Lecturas no asignan
+  numeración ni crean snapshots. Los textos de instrumentos se recortan a 1000
+  caracteres y se informa textos_recortados. Sin tokens, columnas sensibles ni
+  archivos binarios. PDF, actas y fotos se consultan desde la pantalla del sistema.
+- Subconsultas de conteos evitan multiplicar instrumentos por joins.
+  Si hay varios informes/resultados para el mismo instrumento se muestra el
+  primero con advertencia; no se modifican esos datos históricos.
+
+PERMISOS
+- Servicio Tecnico: solo reportes de tareas asignadas mediante user_id del técnico.
+- Operaciones, Asesor de Ventas, Jefe de Ventas y Administracion: lectura global,
+  acorde al historial de pantalla. La restricción por asignación de técnicos
+  es adicional en MCP.
+- Gerencia y Area de TI heredan mcp.roles_acceso_total existente.
+- Area de Almacen y roles desconocidos no tienen acceso al módulo (403).
+  Reportes/instrumentos fuera de alcance responden 404.
+- Config vacía deniega acceso ordinario. No cambia los permisos de las herramientas
+  anteriores de registro; las claves de historial son independientes.
+
+FINALIZACIÓN DEL SERVICIO
+- Requiere acceso global al historial y rol Operaciones, permiso existente
+  Finalizar Reporte Operaciones o acceso total configurado.
+- Consultar primero servicio_tecnico_ver_estado_servicio con pendiente_id.
+- Revisa TODOS los reportes vinculados a TODAS las tareas del pendiente,
+  sin filtros de fecha ni paginación. Debe haber al menos un reporte y todos
+  deben estar cerrados. Ya finalizado también se rechaza.
+- Mostrar cliente, pendiente y estado actual -> Finalizado; explicar que la
+  pantalla no ofrece deshacer y obtener confirmación explícita.
+- Enviar confirmado=true y version_actual. El servidor vuelve a comprobar
+  permiso, versión y estados dentro de una transacción con bloqueos de filas.
+- Una modificación intermedia exige consultar y confirmar nuevamente.
+- Solo cambia tb_pendientes.estado y updated_at; no cierra reportes ni tareas,
+  no aprueba resultados y no altera instrumentos/fotos/actas.
+- Un permiso de finalizar sin acceso global no habilita la operación.
+- No expone eliminación de reportes: el borrado en cascada de registros y fotos
+  es irreversible y está excluido por la guía MCP. La aprobación/cierre de
+  reportes individuales permanece en el sistema central.
+
+ARCHIVOS MODIFICADOS LOCALMENTE
+SISTEMA:
+  app/Http/Controllers/Mcp/McpHistorialReportesController.php (nuevo)
+  routes/api.php (grupo de seis rutas)
+  config/mcp.php (claves historial_reportes_*)
+  tests/Feature/HistorialReportesTest.php (nuevo)
+GATEWAY:
+  app/Mcp/Tools/ServicioTecnico*Historial*Tool.php y otras herramientas listadas
+  app/Mcp/Tools/ServicioTecnicoVerInstrumentosReporteTool.php
+  app/Mcp/Tools/ServicioTecnicoVerEstadoServicioTool.php
+  app/Mcp/Tools/ServicioTecnicoFinalizarServicioTool.php
+  app/Mcp/Servers/BalinsaServer.php (v1.12.0)
+  tests/Feature/HistorialReportesTest.php
+  tests/Unit/HistorialReportesToolsTest.php
+No se modificaron los componentes Vue ni los controladores originales.
+
+INSTALAR EN OTRO ENTORNO — PRIMERO SISTEMA
+1. Copiar sistema/app/Http/Controllers/Mcp/McpHistorialReportesController.php.
+2. Agregar sistema/config/historial-reportes-BLOQUE.txt dentro del array de
+   config/mcp.php, sin duplicar claves existentes.
+3. Agregar sistema/routes/historial-reportes-BLOQUE.txt DENTRO del grupo mcp
+   existente con auth:sanctum, abilities:mcp, throttle:60,1.
+4. El POST de finalización añade throttle:20,1. Rutas numéricas usan whereNumber.
+5. php artisan config:clear
+   php artisan optimize:clear
+   php artisan route:list --path=mcp/servicio-tecnico/historial-reportes
+6. Deben aparecer cinco GET y un POST. No hay migraciones ni secretos nuevos.
+   Requiere las tablas del módulo y reportes_instrumentos.orden_pdf ya existente.
+
+GATEWAY
+1. Copiar gateway/app/Mcp/ por encima conservando las herramientas anteriores.
+2. composer2 dump-autoload -o --no-scripts
+3. php artisan optimize:clear
+4. Recrear los conectores Claude/ChatGPT para actualizar el catálogo.
+
+En las carpetas locales de este trabajo ya están aplicadas rutas y config:
+NO volver a pegar los bloques allí. Estas instrucciones son para otro entorno.
+
+VERIFICACIÓN REALIZADA
+- Sintaxis correcta en las seis herramientas, BalinsaServer, controlador central,
+  routes/api.php y config/mcp.php.
+- route:list del sistema central: seis rutas verificadas con autenticación,
+  habilidad mcp y throttling; no se hicieron llamadas de escritura reales.
+- 8 pruebas del controlador (67 aserciones) aprobadas con Laravel 10 / PHPUnit
+  10.5.7 del sistema central y SQLite en memoria, sin usar la BD real.
+- 3 pruebas del gateway (8 aserciones) aprobadas: filtros comunes, IDs de rutas,
+  paginación y lista blanca del cuerpo de finalización.
+- Regresión de reportes anteriores y nuevos: 28 pruebas, 155 aserciones, aprobadas
+  en el gateway con PHPUnit 11.5.57.
+- Comprobadas tareas ajenas, roles, Gerencia, duplicados históricos, ID incorrecto,
+  textos recortados, fechas/límites, reporte abierto fuera del rango, permiso
+  explícito, confirmación falsa, versión obsoleta, doble finalización y servicio
+  sin reportes. Finalizar solo cambia el pendiente.
+- No se repitió la suite global ajena a reportes; el fallo previo documentado de
+  HojasSalidaToolsTest queda fuera de esta entrega.
+- Pendiente: concurrencia MySQL entre pantalla y MCP, tokens reales, auditoría
+  end-to-end en agent_actions e Inspector/Claude/ChatGPT.
+
+COMANDOS PARA REPETIR
+Sistema:
+  php vendor/phpunit/phpunit/phpunit --do-not-cache-result tests/Feature/HistorialReportesTest.php
+Gateway:
+  php vendor/phpunit/phpunit/phpunit tests/Unit/HistorialReportesToolsTest.php
+  php vendor/phpunit/phpunit/phpunit --filter "HistorialReportes|ReportesTools|ReportesSistema"
+Pruebas aisladas con SQLite en memoria; no usan datos reales.
+
+EJEMPLOS PARA EL ASISTENTE
+“Busca los reportes de Empresa Uno entre el 1 y el 29 de octubre”.
+“Muéstrame el reporte RPT-000101 y sus instrumentos”.
+“Cuántos informes y resultados hay en ese rango”.
+“Consulta si el servicio 7 puede finalizarse”.
+“Finaliza el servicio 7” -> consultar estado completo, resumir y pedir confirmación.

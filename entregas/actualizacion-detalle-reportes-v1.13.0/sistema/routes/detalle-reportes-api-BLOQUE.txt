@@ -1,0 +1,9 @@
+
+    Route::prefix('servicio-tecnico/detalle-reportes')->group(function () {
+        Route::get('{id}/acciones', [\App\Http\Controllers\Mcp\McpDetalleReportesController::class, 'acciones'])->whereNumber('id');
+        Route::post('{id}/finalizar', [\App\Http\Controllers\Mcp\McpDetalleReportesController::class, 'finalizar'])->whereNumber('id')->middleware('throttle:20,1');
+        Route::post('{id}/instrumentos/{instrumentoId}/ficha', [\App\Http\Controllers\Mcp\McpDetalleReportesController::class, 'instrumento'])->whereNumber(['id','instrumentoId'])->middleware('throttle:20,1');
+        Route::post('{id}/instrumentos/{instrumentoId}/informe', [\App\Http\Controllers\Mcp\McpDetalleReportesController::class, 'informe'])->whereNumber(['id','instrumentoId'])->middleware('throttle:20,1');
+        Route::post('{id}/instrumentos/{instrumentoId}/resultado', [\App\Http\Controllers\Mcp\McpDetalleReportesController::class, 'resultado'])->whereNumber(['id','instrumentoId'])->middleware('throttle:20,1');
+        Route::get('{id}/instrumentos/{instrumentoId}/pdf', [\App\Http\Controllers\Mcp\McpReporteTecnicoPdfController::class, 'pdf'])->whereNumber(['id','instrumentoId']);
+    });

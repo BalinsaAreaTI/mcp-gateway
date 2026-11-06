@@ -1,0 +1,35 @@
+CERTIFICACIONES v1.15.0
+
+Estado: cambios aplicados localmente en gateway y Sistema central. Hosting no modificado.
+21 herramientas de Certificaciones: 18 anteriores + buscar_clientes, prevalidar_solicitud
+ y ver_series_instrumento. Sin migraciones nuevas.
+
+Contenido
+- gateway/: archivos modificados del gateway y pruebas.
+- sistema/: cuatro archivos actualizados del Sistema.
+- respaldo-gateway/ y respaldo-sistema/: versiones anteriores de archivos existentes.
+- archivos-nuevos-gateway.txt: archivos nuevos que no tienen respaldo anterior.
+- manifest.json: hashes antes/después para Sistema.
+- instalar-sistema.ps1: instalador local al destino revisado; comprueba hashes antes de copiar.
+- INFORME-COBERTURA.txt: acciones, auditoría, mejoras y límites.
+
+Despliegue (no ejecutado)
+1. Respaldar archivos actuales. Comparar rutas/api.php: integrar las tres rutas nuevas
+   dentro del grupo certificaciones si el hosting difiere del código revisado.
+2. Copiar sistema/ al Sistema central y gateway/app/ al gateway respetando las rutas.
+   No copiar los controladores del Sistema al gateway.
+3. Ejecutar php artisan optimize:clear en cada aplicación según procedimiento del hosting.
+4. Refrescar o reconectar el cliente MCP para descubrir las tres herramientas nuevas.
+5. Validar roles, filtro de emisión, catálogo nuevo, PDF con 0/50/100 °C y carga por serie
+   en entorno de pruebas antes de usar datos reales.
+
+Pruebas (desde este workspace, que conserva entregas/)
+php vendor/phpunit/phpunit/phpunit --filter Certificacion
+Resultado: 17 tests, 248 assertions correctas.
+El test de PDF y los feature tests cargan clases desde la entrega del Sistema.
+Ver informe por el fallo ajeno detectado en la suite Unit completa.
+
+Rollback
+Restaurar los archivos de respaldo solo si no contienen cambios posteriores a esta entrega.
+Para gateway, restaurar archivos anteriores y retirar los archivos nuevos enumerados,
+tras comprobar que no recibieron modificaciones posteriores. No hay migraciones que revertir.

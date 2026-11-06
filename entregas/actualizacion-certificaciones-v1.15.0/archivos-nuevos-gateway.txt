@@ -1,0 +1,6 @@
+app/Mcp/Tools/CertificacionesPrevalidarSolicitudTool.php
+app/Mcp/Tools/CertificacionesBuscarClientesTool.php
+app/Mcp/Tools/CertificacionesVerSeriesInstrumentoTool.php
+tests/Feature/CertificacionesTest.php
+tests/Unit/CertificacionesToolsTest.php
+tests/Unit/CertificacionPdfTest.php

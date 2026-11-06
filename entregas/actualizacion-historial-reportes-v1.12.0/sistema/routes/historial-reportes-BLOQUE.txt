@@ -1,0 +1,10 @@
+
+    // Historial: IDs de reporte y pendiente; independiente del registro por tarea.
+    Route::prefix('servicio-tecnico/historial-reportes')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Mcp\McpHistorialReportesController::class, 'buscar']);
+        Route::get('resumen', [\App\Http\Controllers\Mcp\McpHistorialReportesController::class, 'resumen']);
+        Route::get('servicios/{id}', [\App\Http\Controllers\Mcp\McpHistorialReportesController::class, 'verServicio'])->whereNumber('id');
+        Route::post('servicios/{id}/finalizar', [\App\Http\Controllers\Mcp\McpHistorialReportesController::class, 'finalizarServicio'])->whereNumber('id')->middleware('throttle:20,1');
+        Route::get('{id}/instrumentos', [\App\Http\Controllers\Mcp\McpHistorialReportesController::class, 'instrumentos'])->whereNumber('id');
+        Route::get('{id}', [\App\Http\Controllers\Mcp\McpHistorialReportesController::class, 'ver'])->whereNumber('id');
+    });

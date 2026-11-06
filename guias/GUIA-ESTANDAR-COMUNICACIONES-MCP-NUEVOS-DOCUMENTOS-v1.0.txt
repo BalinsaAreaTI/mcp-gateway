@@ -1,0 +1,446 @@
+BALINSA - GUIA ESTANDAR DE INTEGRACION DE NUEVOS DOCUMENTOS A COMUNICACIONES MCP
+Version: 1.0 | 02/11/2026 | Tipo: guia tecnica de ampliacion (NO ejecuta cambios)
+Stack: Sistema Laravel 10 + Vue + MySQL; gateway Laravel 12 + MCP; Hostinger SMTP individual
+
+================================================================================
+0. OBJETIVO Y PRINCIPIO CENTRAL
+================================================================================
+Esta guia establece el patron para enviar, con aprobacion web previa, un PDF,
+reporte tecnico, certificado u otro archivo generado por los modulos de Balinsa.
+
+PRINCIPIO: NO construir una herramienta MCP de correo por documento.
+El modulo de Comunicaciones expone las MISMAS herramientas genericas:
+ - comunicaciones_estado_correo_usuario
+ - comunicaciones_tipos_documento_disponibles
+ - comunicaciones_preparar_envio_documento
+ - comunicaciones_consultar_estado_envio
+ - comunicaciones_historial_envios
+
+Para sumar un tipo documental nuevo, normalmente se agregan:
+ 1) reglas de acceso al documento en Laravel 10;
+ 2) fuente/servicio generador reutilizable (si ya existe, reutilizarlo);
+ 3) UN adaptador que implemente DocumentoAdjuntable (o la interfaz de fuente);
+ 4) UNA entrada en config/comunicaciones.php -> 'tipos';
+ 5) UN permiso especifico de Spatie y su asignacion;
+ 6) pruebas, piloto y documentacion del nuevo tipo.
+
+NO se requiere necesariamente un controlador nuevo. Un controlador de origen
+solo es necesario si hay que construir/reorganizar una API web del modulo; lo
+preferible es extraer la carga de datos a un servicio compartido, NO llamar
+rutas web o descargar PDFs con HTTP desde el worker.
+
+NO cambiar de manera rutinaria: EmpresaServer, LlamaAlSistema,
+ComunicacionesPrepararEnvioDocumentoTool, tablas mcp_envios_documentos,
+mcp_envio_adjuntos, HostingerEnvioTransport o cron. Extender por adaptadores.
+
+================================================================================
+1. ESTADO / CONTRATOS REALES DE REFERENCIA
+================================================================================
+Origen: paquetes previos Comunicaciones MCP v0.1.0, v0.4.0, v0.4.1, v0.5.0,
+v0.6.0 y v0.7.0 entregados para Balinsa. Verificar el codigo FINAL instalado
+antes de integrar, porque en produccion pueden existir cambios posteriores.
+
+Rutas importantes en Laravel 10:
+ app/Services/Comunicaciones/Contratos/DocumentoAdjuntable.php
+ app/Services/Comunicaciones/Contratos/FuenteDocumentoAdjuntable.php
+ app/Services/Comunicaciones/Adaptadores/AdaptadorDesdeFuente.php
+ app/Services/Comunicaciones/RegistroDocumentos.php
+ app/Services/Comunicaciones/HuellaDocumento.php
+ app/Services/Comunicaciones/DTO/DescriptorDocumento.php
+ app/Services/Comunicaciones/DTO/AdjuntoDocumento.php
+ app/Services/Comunicaciones/DTO/ContextoDocumento.php
+ app/Providers/ComunicacionesServiceProvider.php
+ config/comunicaciones.php
+
+Contrato DocumentoAdjuntable (Fase 1):
+ describir(User $usuario, string $referencia,
+           ContextoDocumento $contexto): DescriptorDocumento;
+ generar(User $usuario, string $referencia,
+         ContextoDocumento $contexto): AdjuntoDocumento;
+
+Contrato opcional de la fuente (Fase 4):
+ describirAutorizado(User $usuario, string $referencia,
+                     ContextoDocumento $contexto): DescriptorDocumento;
+ generarAutorizado(User $usuario, string $referencia,
+                   ContextoDocumento $contexto): AdjuntoDocumento;
+
+Si una fuente implementa FuenteDocumentoAdjuntable, el adaptador puede extender
+AdaptadorDesdeFuente; si no, implementa DocumentoAdjuntable directamente.
+
+DescriptorDocumento: titulo (max 180 caracteres), nombreArchivo seguro (max
+180 bytes; sin barras, controles ni nombres ocultos), mime exacto y huellaSha256
+(hexadecimal SHA256, 64 caracteres). Se usa para la vista previa y la aprobacion.
+
+AdjuntoDocumento: nombreArchivo, mime, contenido binario generado en MEMORIA.
+Validaciones de origen: PDF comienza por %PDF-; DOCX/XLSX por ZIP PK; CSV no
+contiene byte nulo. El registro limita tamano y MIME por tipo.
+
+ContextoDocumento: fechaIso fija, generada al preparar. Evita que una fecha
+variable impresa cambie entre preparacion, aprobacion y worker.
+
+RegistroDocumentos: solo tipos habilitados; valida permiso GLOBAL y ESPECIFICO,
+referencia permitida, formato, tamano y huella antes y despues de generar.
+La referencia permitida es alfanumerica con _ o -, maximo 80 caracteres:
+regex del nucleo: \A[A-Za-z0-9][A-Za-z0-9_-]{0,79}\z
+(NO admite rutas, URLs, JSON arbitrario o parametros GET).
+
+================================================================================
+2. PASO 0 - INVENTARIO DEL DOCUMENTO QUE SE VA A INTEGRAR
+================================================================================
+Reunir y revisar ANTES de escribir el adaptador:
+ [ ] Modulo propietario: Servicio Tecnico, Ventas, Calidad, Metrologia, etc.
+ [ ] Nombre/tipo interno propuesto, ej.: reporte_tecnico, certificado_calibracion.
+ [ ] Tabla principal, PK REAL y relaciones del documento.
+ [ ] Clases actuales que cargan datos y generan PDF/XLSX/CSV/DOCX.
+ [ ] Firma/argumentos/valor real que retorna el generador.
+ [ ] Estado: borrador, vigente, aprobado, anulado, reemplazado, etc.
+ [ ] Regla exacta de acceso del modulo: roles, usuario titular, asignacion,
+     cliente, sede, visibilidad, permisos por registro y estado.
+ [ ] Campos/fuentes que se imprimen: datos, adjuntos, firmas, fotos, logo,
+     QR, version de plantilla, opciones, orientacion, fecha de impresion.
+ [ ] Restricciones legales o comerciales del documento, especialmente
+     certificados y documentos tecnicos formalmente emitidos.
+ [ ] Tamano maximo esperado y caso de PDF/reporte mas extenso.
+ [ ] Ubicacion de datos/fuentes: base de datos/archivos privados o publicos.
+ [ ] Forma de obtener una referencia exacta con herramientas actuales del agente.
+
+NO usar el numero visual del documento como ID interno sin verificar unicidad.
+NO exponer certificados en borrador, anulados ni reemplazados por defecto.
+
+================================================================================
+3. PASO 1 - REUTILIZAR EL GENERADOR ORIGINAL (NO DUPLICAR EL PDF)
+================================================================================
+Caso A: YA existe un servicio PHP en Laravel 10 que devuelve el archivo:
+   $resultado = $servicio->generar($datos);
+   // Esperado para PDF: ['contenido' => bytes, 'archivo' => '...pdf']
+
+Se reutiliza ese servicio; el adaptador carga los mismos datos autorizados,
+obtiene su resumen y construye AdjuntoDocumento::desdeResultadoPdf($resultado).
+Ejemplos reales:
+ - HojaSalidaDatosPdf + HojaSalidaPdfService.
+ - CventaPdfService::resumen($cot, $productos) y
+   CventaPdfService::generar($cot, $productos, false).
+ - CservicioDatosPdf::cargar($id) y
+   CservicioPdfService::resumen($fila, $detalle) / generar($fila, $detalle).
+
+Caso B: el PDF se genera SOLO en frontend (Vue/jsPDF) o en un controlador web:
+ - Extraer generacion a un servicio de dominio Laravel 10 que produzca bytes.
+ - Conservar el controlador web actual y reutilizar el nuevo servicio desde el
+   adaptador y, si corresponde, desde la vista web.
+ - Usar plantillas/contenidos originales y verificar paridad numerica/visual.
+ - NO consumir una URL firmada del navegador para enviar el PDF.
+ - NO pasar al worker cookies, URLs publicas ni token del agente.
+
+Caso C: se trata de reporte en XLSX/CSV/DOCX:
+ - Crear un servicio generador en Laravel, verificar la version aprobada y MIME.
+ - Retornar contenido binario en memoria; generar en un directorio temporal
+   PRIVADO solo si el informe es demasiado grande para memoria, con limpieza
+   segura y restricciones de path. No guardar una URL publica permanente.
+ - Para XLSX: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+ - Para DOCX: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+ - Para CSV: text/csv
+
+================================================================================
+4. PASO 2 - IMPLEMENTAR EL ADAPTADOR
+================================================================================
+Crear: app/Services/Comunicaciones/Adaptadores/ReporteTecnicoAdapter.php
+(El nombre es un EJEMPLO; adaptar a los nombres reales del proyecto).
+
+Esqueleto conceptual (NO instalar sin implementar la carga autorizada):
+
+<?php
+namespace App\Services\Comunicaciones\Adaptadores;
+
+use App\Models\User;
+use App\Services\Comunicaciones\Contratos\DocumentoAdjuntable;
+use App\Services\Comunicaciones\DTO\DescriptorDocumento;
+use App\Services\Comunicaciones\DTO\AdjuntoDocumento;
+use App\Services\Comunicaciones\DTO\ContextoDocumento;
+use App\Services\Comunicaciones\HuellaDocumento;
+
+final class ReporteTecnicoAdapter implements DocumentoAdjuntable
+{
+    // Inyectar el servicio del reporte REAL una vez inspeccionado.
+    public function describir(User $usuario, string $referencia,
+        ContextoDocumento $contexto): DescriptorDocumento
+    {
+        // 1. Validar ID de reporte y permiso de LECTURA/estado/titularidad.
+        // 2. Obtener todos los datos que se imprimiran, con orden estable.
+        // 3. Definir titulo, nombreArchivo .pdf, y MIME.
+        // 4. HuellaDocumento::calcular([...datos + version plantilla +
+        //    logos/firmas/adjuntos + contexto fijo...], 'reporte_tecnico_v1');
+        // 5. Devolver new DescriptorDocumento(...).
+        throw new \LogicException('Implementar con esquema del reporte real.');
+    }
+
+    public function generar(User $usuario, string $referencia,
+        ContextoDocumento $contexto): AdjuntoDocumento
+    {
+        // 1. Revalidar lector/permisos y estado del reporte.
+        // 2. Cargar datos desde la misma fuente que describir().
+        // 3. Reutilizar servicio real: generar -> ['contenido','archivo'].
+        // 4. return AdjuntoDocumento::desdeResultadoPdf($resultado);
+        throw new \LogicException('Implementar con generador del reporte real.');
+    }
+}
+
+No reutilizar el esqueleto tal cual: los dos throw indican que NO esta listo.
+PATRON OBLIGATORIO: cargar datos AUTORIZADOS por usuario en ambos metodos.
+NO basta con $usuario->can('Enviar ...') para garantizar titularidad sobre
+un reporte o certificado concreto. El Registro valida permiso de envio;
+el adaptador valida el derecho de lectura del documento particular.
+
+Para reportes parametrizados sin un ID persistente:
+ - Crear primero, EN EL MODULO, un registro privado de definicion/snapshot del
+   reporte (UUID o folio opaco), con filtros validados, propietario, periodo,
+   version y vencimiento/retencion; dar al agente esa referencia segura.
+ - Validar el usuario y el snapshot antes de describir/generar.
+ - No colocar filtros arbitrarios, SQL, JSON, URL o path en documento_referencia.
+ - Si necesitas referencias con otro formato, revisar el contrato del nucleo
+   y las restricciones de BD antes de ampliar formatos.
+
+================================================================================
+5. PASO 3 - GENERAR UNA HUELLA CONFIABLE
+================================================================================
+La huella es sobre DATOS + REPRESENTACION que efectivamente se enviara.
+Incluir, segun el modulo:
+ [ ] registro principal y detalles que se imprimen;
+ [ ] archivos/fotos/firmas usadas para componer el documento (hash de bytes);
+ [ ] estados de aprobacion, emision, version, sustitucion y anulacion;
+ [ ] configuracion de membrete, textos institucionales, condiciones, RUC;
+ [ ] hash/version de Blade/servicio de generacion y plantilla externa;
+ [ ] opciones de formato, orientacion, fecha/hora fija del ContextoDocumento;
+ [ ] listas ordenadas de manera estable (ORDER BY para resultados SQL).
+
+Usar HuellaDocumento::calcular($datos, 'version_estable_del_documento');
+No usar now() / microtime() / IDs de request en la huella, salvo contexto
+CONGELADO, ni convertir colecciones con orden no determinista.
+
+La huella se recalcula al aprobar y al procesar el job:
+ - si cambia -> documento_cambiado / rechazar nueva salida;
+ - usuario debe preparar y aprobar una solicitud NUEVA;
+ - nunca enviar silenciosamente una version posterior de un certificado.
+
+================================================================================
+6. PASO 4 - REGISTRAR EL TIPO EN LA LISTA BLANCA
+================================================================================
+Agregar SOLO una entrada a 'tipos' dentro de config/comunicaciones.php.
+NO duplicar la clave 'tipos' y NO reemplazar la configuracion Hostinger.
+
+Ejemplo para PDF tecnico, inicialmente DESHABILITADO:
+
+'reporte_tecnico' => [
+    'adaptador' => \App\Services\Comunicaciones\Adaptadores\ReporteTecnicoAdapter::class,
+    'habilitado' => false,
+    'permiso_global' => 'Enviar documentos por correo',
+    'permiso' => 'Enviar reportes tecnicos por correo',
+    'mime_permitidos' => ['application/pdf'],
+    'max_bytes' => 8 * 1024 * 1024,
+],
+
+Para certificados, otro tipo y otro permiso:
+  tipo: certificado_calibracion
+  permiso: Enviar certificados de calibracion por correo
+  condicion de negocio: SOLO emitido/aprobado/vigente, nunca borrador,
+  anulado o reemplazado (adaptar a estados reales del sistema).
+
+El RegistroDocumentos (fase 5) resuelve instancias con el contenedor Laravel;
+por lo general NO necesitas registrar el adaptador en EmpresaServer o en otro
+provider si su constructor y dependencias se resuelven por autowiring.
+Si la fuente requiere una interfaz con implementaciones multiples, registrar
+el binding en ComunicacionesServiceProvider y probar su resolucion.
+
+================================================================================
+7. PASO 5 - CREAR Y ASIGNAR PERMISOS DE SPATIE
+================================================================================
+Crear permiso especifico usando el guard REAL del proyecto (no asumir 'web'):
+ 'Enviar reportes tecnicos por correo'
+ 'Enviar certificados de calibracion por correo'
+
+El empleado necesita DOS permisos:
+ 1. Enviar documentos por correo (GLOBAL)
+ 2. Enviar [tipo] por correo (ESPECIFICO)
+
+Mas el derecho del modulo a VER el registro concreto; este ultimo debe
+revalidarse en el adaptador y no sustituirse por el permiso de envio.
+Habilitar 'habilitado' => true SOLO al terminar pruebas y asignaciones.
+
+Comprobar en Tinker (adaptar ID real):
+ $u = \App\Models\User::findOrFail(ID_REAL);
+ $u->can('Enviar documentos por correo');
+ $u->can('Enviar reportes tecnicos por correo');
+ config('comunicaciones.tipos.reporte_tecnico.habilitado');
+ class_exists(config('comunicaciones.tipos.reporte_tecnico.adaptador'));
+
+No ejecutar givePermissionTo sobre usuarios de produccion sin autorizacion.
+
+================================================================================
+8. PASO 6 - PROBAR DESDE LARAVEL 10 SIN ENVIAR CORREOS
+================================================================================
+A. Verificar sintaxis: php -l ruta_del_adaptador.php
+B. Limpiar caches: php artisan optimize:clear; php artisan config:cache;
+   php artisan permission:cache-reset (si cambiaron permisos Spatie).
+C. Probar describir con un usuario autorizado y con un ID real:
+   $reg = app(\App\Services\Comunicaciones\RegistroDocumentos::class);
+   $ctx = \App\Services\Comunicaciones\DTO\ContextoDocumento::ahoraLima();
+   $d = $reg->describir($u, 'reporte_tecnico', 'ID_REAL', $ctx);
+   // Inspeccionar SOLO titulo, nombreArchivo, mime y SHA; no secretos.
+D. Probar el MISMO descriptor dos veces con el mismo contexto; huella igual.
+E. Probar un usuario no autorizado; debe fallar sin revelar datos del reporte.
+F. Probar reporte anulado/reemplazado/borrador, si corresponde; debe fallar.
+G. Generar bytes con generarVerificado() en un entorno de pruebas:
+   $a = $reg->generarVerificado($u, 'reporte_tecnico', 'ID_REAL', $ctx,
+                               $d->huellaSha256);
+   // Verificar bytes, MIME, nombre y PDF legible. No escribir a public_html.
+H. Modificar un dato o plantilla: generarVerificado con la huella anterior
+   debe fallar antes de adjuntar; restablecer dato de prueba.
+I. Verificar extension correcta, tamano maximo y recursos del hosting.
+J. Comparar el archivo con el PDF que ya ofrece el modulo (paridad visual y
+   exactitud de resultados, firmas, sellos, folios, fechas y cifras).
+
+CUIDADO: en RegistroDocumentos de la fase 5, describir() puede funcionar si
+preparaciones_habilitadas=true O envios_habilitados=true; generarVerificado()
+exige envios_habilitados=true. Probar con el flujo y permisos del entorno
+controlado; no aprobar mensajes externos durante la validacion del adaptador.
+
+================================================================================
+9. PASO 7 - PRUEBA DE INTEGRACION CON EL AGENTE
+================================================================================
+1. Comprobar comunicaciones_estado_correo_usuario.
+2. Consultar comunicaciones_tipos_documento_disponibles.
+   Debe mostrar 'reporte_tecnico' solo con habilitado=true y permisos validos.
+3. Obtener ID interno autorizado del reporte desde las herramientas propias
+   del modulo; si no existe una busqueda, evaluar crearla para ese modulo.
+4. Preparar solicitud: tipo=reporte_tecnico, referencia=ID_INTERNO,
+   destinatario=BUZON_PILOTO, asunto y mensaje.
+5. Comprobar que responde PREPARADO y NO SMTP_ACEPTADO.
+6. Abrir enlace de aprobacion en la WEB de Balinsa; revisar adjunto, destino,
+   origen, asunto; aprobar manualmente por POST con CSRF.
+7. Verificar estados: preparado -> encolado -> procesando -> smtp_aceptado.
+8. Verificar recepcion REAL, adjunto correcto y trazabilidad de eventos.
+9. Repetir para usuario sin permiso y otro sin titularidad; deben bloquearse.
+10. Si hay fallo ambiguo SMTP, no reintentar automaticamente.
+
+LA HERRAMIENTA MCP DE PREPARACION NO APUEBA NI ENVIA SOLA.
+No compartir App Password, tokens, rutas fisicas o contenido confidencial en logs.
+
+================================================================================
+10. PRUEBAS ESPECIALES PARA CERTIFICADOS Y REPORTES TECNICOS
+================================================================================
+ - Definir autoridad de emision y responsables del certificado.
+ - Exigir estado oficial aprobado/emitido, integridad y numero unico.
+ - Validar competencia del solicitante y a que clientes puede remitirlo.
+ - Evitar enviar documentos anulados/sustituidos. Si se versionan, capturar
+   version exacta y anexos originales en la huella.
+ - Si hay firma digital, validar que los bytes finales conservan la firma y
+   que el generador NO invalida firmas PAdES u otros sellos ya emitidos.
+ - Si se requiere copia inalterable, usar el documento oficial almacenado en
+   repositorio privado autorizado (no una regeneracion que cambie su firma).
+ - No asumir que una nueva impresion equivale al certificado oficialmente
+   emitido. Diferenciar copia, borrador y original segun politica aplicable.
+ - Para resultados de ensayo/calibracion y datos personales sensibles,
+   considerar destinatarios permitidos, aprobaciones extra, retencion y auditoria.
+ - Registrar e implementar reglas regulatorias/normativas concretas SOLO tras
+   revisar los requisitos vigentes del area de Calidad/Metrologia.
+
+================================================================================
+11. CAMBIOS QUE NORMALMENTE NO SON NECESARIOS
+================================================================================
+ - NO agregar una herramienta MCP por cada documento nuevo.
+ - NO cambiar EmpresaServer: ya registra comunicaciones_preparar_envio_documento.
+ - NO crear rutas de aprobacion adicionales por documento.
+ - NO agregar columnas tipo_reporte, tipo_certificado a mcp_envio_adjuntos.
+ - NO crear un segundo servicio SMTP ni compartir cuentas entre empleados.
+ - NO habilitar controladores GET publicos que entreguen documentos arbitrarios.
+ - NO usar enlaces firmados del navegador como archivos adjuntos.
+ - NO invocar Laravel Process para producir PDFs en hosting compartido si
+   depende de proc_open deshabilitado; generar en memoria usando PHP.
+
+Excepciones posibles:
+ - Se necesita exponer los datos desde el modulo a la interfaz web: agregar
+   controlador/ruta WEB propios con acceso del modulo, no del flujo SMTP.
+ - Se requiere reporte con filtros sin ID persistente: crear un registro
+   de snapshot/referencia controlada y su servicio de resolucion.
+ - Un formato no aceptado por RegistroDocumentos: revisar MIME, extension,
+   size y validadores de contenido, con pruebas y versionado del nucleo.
+ - Se exige otra firma de reporte certificada: incorporar un servicio de
+   entrega de la copia oficial desde almacenamiento privado autorizado.
+
+================================================================================
+12. CIERRE POR TIPO DOCUMENTAL: CHECKLIST DE ACEPTACION
+================================================================================
+[ ] Referencia interna inequívoca, no URL ni folio visual ambiguo.
+[ ] Derechos de lectura, envio y titularidad comprobados.
+[ ] Estado aprobado/vigente comprobado, cuando corresponda.
+[ ] Contrato DocumentoAdjuntable implementado con datos reales.
+[ ] Generador unico reutilizado; sin desviacion del documento oficial.
+[ ] Descriptor estable: titulo, archivo, MIME, huella.
+[ ] Huella representa todos los datos y recursos que influyen en los bytes.
+[ ] Prueba de cambio de contenido antes y durante la generacion.
+[ ] MIME, nombre, extension, bytes, max_bytes correctos.
+[ ] Entrada habilitada en config/comunicaciones.php.
+[ ] Permisos Spatie creados y asignados solo a roles autorizados.
+[ ] Listado MCP refleja el nuevo tipo sin modificar Laravel 12.
+[ ] Probado piloto desde ChatGPT / Claude si procede.
+[ ] Aprobacion web y CSRF obligatorias, SMTP individual correcto.
+[ ] Eventos, estados, logs y proteccion de secretos comprobados.
+[ ] Manual del modulo actualizado y procedimiento de revocacion definido.
+
+================================================================================
+13. APENDICE DE DIAGNOSTICO: ERROR 429 EN ENLACE DE APROBACION
+================================================================================
+Código inspeccionado de fase 6:
+ routes/web.php usa grupo ['auth', 'throttle:20,1'] para el GET y POST:
+ GET  /comunicaciones/envios/{id}/aprobar  -> AprobacionEnvioController@ver
+ POST /comunicaciones/envios/{id}/aprobar  -> @aprobar + throttle:5,1
+
+El controlador ver() NO lee utm_source ni hace validacion de firma.
+Por tanto, agregar '?utm_source=chatgpt.com' no explica por si solo un 429.
+Puede ser el middleware de Laravel (20 req/min GET; POST 5/min y el grupo),
+una limitacion adicional en otra capa, o rate limiting de Hostinger/CDN/WAF.
+El 429 NO demuestra un fallo del adaptador de HojaSalida.
+
+Diagnostico seguro:
+ 1. Revisar la respuesta 429 en DevTools > Network: request URL y metadatos
+    de status, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, Server.
+    NO copiar cookies, tokens de sesion ni enlaces privados completos.
+ 2. Ejecutar: php artisan route:list --path=comunicaciones/envios -v
+    Revisar middleware de ruta, grupos anidados y duplicados.
+ 3. Esperar el plazo Retry-After (o mas de un minuto si no existe) y abrir
+    UNA vez la URL de aprobacion en navegador autenticado SIN el parametro
+    utm_source (solo si NO tiene signature/expires ni otros parametros
+    autenticos). No probar repetidamente en bucle.
+ 4. Revisar el error de Laravel en storage/logs/laravel.log, si existe;
+    buscar HTTP 429 de servidor Hostinger en los registros de acceso/WAF.
+ 5. Comparar una aprobacion de cotizacion con una de hoja de salida, usando
+    EL MISMO tipo de ruta y sin cambiar los permisos de seguridad.
+ 6. Si GET devuelve 429 sin llegar al controlador, no modificar el adaptador.
+ 7. Si se confirma saturacion legitima de limite GET, considerar un limiter
+    nombrado por usuario autenticado para GET con capacidad moderada, sin
+    aflojar el limite POST de aprobacion ni proteccion CSRF. Cambios de rates
+    deben ser evaluados/registrados, no quitar throttle a ciegas.
+
+No imprimir URLs privadas completas en los logs ni compartir cookies del
+navegador. La aprobacion real debe continuar requiriendo sesion + POST/CSRF.
+
+================================================================================
+14. FUENTES Y ORIGEN DE LAS REGLAS
+================================================================================
+Fuentes internas: paquetes instalables de Comunicaciones MCP v0.1.0, v0.4.0,
+v0.4.1, v0.5.0, v0.6.0 y v0.7.0, revisados en esta entrega; ademas de la guia
+existente guia-crear-herramientas-pdf-mcp.txt.
+
+Referencias tecnicas publicas:
+ Laravel 10 - Routing and rate limiting:
+ https://laravel.com/docs/10.x/routing
+ Laravel 10 - Queues:
+ https://laravel.com/docs/10.x/queues
+ Hostinger - Error HTTP 429:
+ https://www.hostinger.com/support/how-to-troubleshoot-http-error-429-at-hostinger/
+
+Esta guia describe el patron ACTUAL verificado en los archivos compartidos y
+conservados; no certifica instalaciones reales ajenas al entorno de trabajo.
+Implementar cambios solo tras cotejar codigo, permisos, estructura y generador
+existentes del nuevo modulo. NO envia correos ni instala migraciones.
+
+FIN DE LA GUIA.

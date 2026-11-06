@@ -1,0 +1,8 @@
+
+    // Historial Hojaservico/Index: informes (diagnosticos) y resultados (informes_finales).
+    // Técnicos: solo asignados. Personal comercial/administrativo y Operaciones: lectura global como en Index.
+    'historial_reportes_roles' => ['Servicio Tecnico', 'Operaciones', 'Asesor de Ventas', 'Jefe de Ventas', 'Administracion'],
+    'historial_reportes_roles_ve_todo' => ['Operaciones', 'Asesor de Ventas', 'Jefe de Ventas', 'Administracion'],
+    'historial_reportes_roles_finalizar' => ['Operaciones'],
+    'historial_reportes_permiso_finalizar' => 'Finalizar Reporte Operaciones',
+    'historial_reportes_max_dias' => 93,

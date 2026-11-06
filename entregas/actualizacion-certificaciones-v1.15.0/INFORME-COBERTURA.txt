@@ -1,0 +1,140 @@
+AUDITORÍA DE CERTIFICACIONES — v1.15.0
+Revisión: 3 de noviembre de 2026. Cierre: 4 de noviembre de 2026.
+
+RESULTADO
+18 herramientas existentes revisadas; 3 nuevas registradas (21 en total).
+Cambios aplicados al gateway y a cuatro archivos MCP del Sistema central local.
+No se desplegó al hosting ni se realizaron operaciones sobre datos empresariales.
+
+ACCIONES IDENTIFICADAS POR PANTALLA
+
+Index.vue
+- Listar solicitudes y buscar por cliente, documento, dirección y fecha de emisión:
+  certificaciones_buscar_solicitudes. Se incorporaron documento, direccion y fecha_solicitud.
+  desde/hasta conservan el filtro por CREACIÓN, separado de emisión.
+- Consultar detalle: certificaciones_ver_solicitud y certificaciones_ver_instrumentos_solicitud.
+- Generar PDF por doble clic en campos de la fila: certificaciones_generar_pdf_solicitud.
+- Eliminar (baja lógica, solo Area de TI): certificaciones_eliminar_solicitud.
+- Abrir formulario: navegación; se cubre con el flujo de creación siguiente.
+
+Create.vue
+- Buscar cliente, consultar documento y seleccionar una de dos direcciones:
+  NUEVA certificaciones_buscar_clientes. Usa permisos de Certificaciones, sin depender
+  de Ventas, que podía impedir el flujo de Administración.
+- Seleccionar contacto: certificaciones_contactos_cliente.
+- Agregar contacto: certificaciones_registrar_contacto.
+- Consultar y ampliar nueve catálogos: certificaciones_catalogos y certificaciones_agregar_catalogo.
+  Marcas, modelos, escalas, capacidad/división, procedencias de balanza/termómetro,
+  valores nominales, clases de exactitud y elementos sensor.
+- Consultar tipos, formas y materiales: certificaciones_filtros.
+- Añadir, editar o quitar balanzas/pesas/termómetros, series y puntos de calibración:
+  son cambios al BORRADOR local, no a instrumentos ya guardados. En MCP se reenvía
+  la lista completa del borrador a la herramienta de prevalidación.
+- Previsualizar y validar antes de guardar: NUEVA certificaciones_prevalidar_solicitud.
+  Comparte reglas con registro, devuelve fechas y cantidades, no persiste ni reserva IDs.
+  La vista previa MCP es estructurada (JSON); no genera un PDF de borrador.
+- Guardar: certificaciones_registrar_solicitud, con confirmación, transacción e idempotencia.
+- PDF posterior al registro: certificaciones_generar_pdf_solicitud.
+- Cancelar, cerrar diálogos, agrupación y selección por teclado: acciones de interfaz;
+  no requieren herramientas de escritura.
+
+Certificados.vue
+- Consultar por cliente y rango de creación: certificaciones_buscar_certificados.
+  Mantiene últimos dos meses por defecto; se amplió con documento/dirección/emisión.
+- Consultar Pendiente/Recibido y conteos: buscar_certificados + ver_solicitud.
+  Recibido significa al menos un archivo; no garantiza cobertura de todos los equipos.
+- Ver instrumentos y destino por serie: ver_instrumentos_solicitud + NUEVA
+  certificaciones_ver_series_instrumento, con paginación y conteo de PDF por serie.
+- Listar archivos: certificaciones_ver_archivos_certificado, opcional por instrumento.
+- Seleccionar/subir varios PDF por instrumento/serie: certificaciones_preparar_subida_certificado
+  entrega formulario temporal; el empleado selecciona y envía los archivos en su navegador.
+- Ver/descargar PDF existente: certificaciones_abrir_archivo_certificado.
+- Subir más desde el modal: consultar nuevamente series/detalle y preparar otro destino pendiente.
+- Editar emisión/caducidad: certificaciones_editar_fechas con control de versión.
+
+PorVencer.vue
+- Próximos 7, 15 o 30 días: certificaciones_buscar_por_vencer.
+- Caducados de los últimos 7 días: misma herramienta con modo=caducados.
+- Buscar por cliente/dirección: misma herramienta; se añadieron cliente_id y direccion.
+- Consultar/ver archivos: ver_archivos_certificado + abrir_archivo_certificado.
+- Renovar: certificaciones_renovar_solicitud. Clona instrumentos sin PDF; exige original
+  con archivos y bloquea una segunda renovación. Las renovaciones atendidas se excluyen del listado.
+- Agrupación mensual y orden: presentación; el endpoint ordena por caducidad.
+
+REVISIÓN DE LAS 18 HERRAMIENTAS ORIGINALES
+(Prefijo común: certificaciones_)
+
+buscar_solicitudes: ampliada con filtros de emisión, documento y dirección.
+buscar_certificados: ampliada; conserva creación y significado de Recibido.
+buscar_por_vencer: ampliada; verificados límites de fechas y exclusión de renovaciones atendidas.
+catalogos: códigos 1 Balanza / 2 Termometro alineados con Create; lectura inmediata tras alta.
+filtros: mantiene estados, tipos, ventanas, formas y materiales.
+ver_solicitud: mantiene versión, permisos y conteo bruto aproximado, por compatibilidad.
+ver_instrumentos_solicitud: ahora dirige a consulta de series completas cuando el JSON se recorta.
+ver_archivos_certificado: metadatos paginados por solicitud/instrumento; contrato conservado.
+abrir_archivo_certificado: enlaces firmados ver/descargar, sesión del mismo empleado; conservada.
+generar_pdf_solicitud: contrato conservado; corregida transformación de puntos en el servicio PDF.
+contactos_cliente: referencia al buscador propio del módulo.
+registrar_contacto: mantiene escritura idempotente; referencia al buscador propio.
+agregar_catalogo: valores visibles inmediatamente; mantiene deduplicación y serialización.
+registrar_solicitud: schema más explícito; payload compartido con prevalidación; backend
+  rechaza series repetidas dentro del mismo instrumento para evitar destinos de carga ambiguos.
+editar_fechas: conserva confirmación, versión y validación cronológica.
+eliminar_solicitud: solo TI; comprobado rechazo de Gerencia y versión obsoleta.
+renovar_solicitud: conserva clonación sin PDF, versión y bloqueo de duplicados.
+preparar_subida_certificado: requiere consultar series completas antes de preparar la carga.
+
+HALLAZGOS CORREGIDOS
+1. Dependencia de Ventas al seleccionar clientes: se añadió búsqueda propia del módulo.
+2. Ausencia de prevalidación: ahora valida borrador y calcula caducidad antes de guardar.
+3. Series truncadas a 1000 caracteres: consulta paginada dedicada, con series completas.
+4. Conteo engañoso de archivos: nueva consulta distingue PDF por serie. Veinticinco PDF
+   en una sola serie no cubren otras veinticuatro series sin archivos.
+5. Series duplicadas: rechazo al registrar y señalización de ambigüedad histórica.
+6. Filtros insuficientes: emisión separada de creación, documento y dirección.
+7. Caché obsoleta de catálogos hasta 10 minutos: retirada; se mantienen páginas de máximo 20.
+   Contrapartida: cada lectura de catálogo consulta DB.
+8. Puntos de calibración en blanco en PDF: admite strings y objetos temperatura,
+   preserva cero grados y evita duplicar unidades. Reconoce TERMÓMETRO con tilde.
+9. Instrucciones del servidor: documentan permisos específicos y flujo del módulo.
+
+VERIFICACIÓN REALIZADA
+php vendor/phpunit/phpunit/phpunit --filter Certificacion
+17 pruebas / 248 assertions correctas.
+Incluye registro/schema de 21 tools, filtrado de payload, prevalidación sin escritura,
+idempotencia, fin de mes, contactos ajenos, series duplicadas, paginación, varios PDF
+por serie, filtros, roles bloqueados, solo TI, versión obsoleta, catálogo inmediato,
+ventanas de vencimiento y datos de puntos que alimentan el PDF.
+php -l: 21 archivos de desarrollo correctos; también los cuatro destinos instalados.
+Hashes SHA-256: los cuatro destinos del Sistema coinciden con los archivos probados.
+
+Suite Unit ampliada: 30 pruebas / 280 assertions; un fallo en un módulo no modificado:
+HojasSalidaToolsTest::test_instrument_schema_and_request_match_backend_pagination
+espera solo pagina/limite; la herramienta agrega instrumento_id, numero_pdf y grupo_pdf
+con null al doble de prueba. La herramienta y ese test no se modificaron.
+La suite global NO se presenta como completamente verde.
+
+LÍMITES Y PENDIENTES DE ENTORNO
+- Las pruebas usan SQLite en memoria con adaptadores para funciones de fecha MySQL.
+  Falta comprobar HTTP/OAuth y MySQL real en un entorno de pruebas desplegado.
+- No se probaron cargas reales mediante formulario firmado ni maquetación visual del PDF.
+  El test PDF verifica sus datos; no su apariencia.
+- El conteo bruto histórico de ver_solicitud se conserva: para destinos pendientes
+  usar ver_series_instrumento. Las series ambiguas requieren revisión en el sistema.
+- Los puntos de calibración extensos de ver_instrumentos_solicitud aún pueden recortarse;
+  no deben reconstruirse a partir de un texto incompleto.
+- Prevalidar no bloquea cambios concurrentes: registrar vuelve a validar todo.
+- No se creó edición persistente de instrumentos: esas pantallas solo editan el borrador.
+- El JS de listarArchivos declara argumentos posicionales y las pantallas intentan primero
+  pasar un objeto. Se observó la inconsistencia; MCP usa IDs explícitos. UI sin modificar.
+- No se añadieron envío de correos ni borrado de PDF, ausentes de las pantallas revisadas.
+
+REVISIÓN FINAL — agent-self-evaluation
+Exactitud 4/5: pruebas locales verificadas; falta integración MySQL/HTTP y PDF visual.
+Completitud 4/5: acciones mapeadas; previa MCP estructurada, no PDF de borrador.
+Claridad 4/5: inventario por pantalla y herramienta; detalle extenso por alcance de auditoría.
+Aplicabilidad 4/5: código local aplicado y respaldado; falta despliegue del hosting.
+Concisión 4/5: respuesta resumida, evidencia conservada en este informe.
+Promedio 4.0. Próximas comprobaciones: flujo autenticado en MySQL de pruebas, revisión
+visual del PDF y carga manual por serie. Los límites permiten evaluar el resultado
+sin confundir pruebas locales con validación de producción.

@@ -1,0 +1,4 @@
+
+// Enlace temporal: firma relativa y permisos dentro del controlador, NO middleware signed.
+Route::get('mcp/reportes/{id}/instrumentos/{instrumentoId}/pdf', [\App\Http\Controllers\Mcp\McpReporteTecnicoPdfController::class, 'abrir'])
+    ->whereNumber(['id','instrumentoId'])->middleware('throttle:20,1')->name('mcp.reporte_tecnico.pdf');
