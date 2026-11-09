@@ -56,6 +56,10 @@ use App\Mcp\Tools\ComunicacionesContactosClienteTool;
 use App\Mcp\Tools\ComunicacionesPrepararAltaContactoTool;
 use App\Mcp\Tools\ComunicacionesRevisarAltaContactoTool;
 use App\Mcp\Tools\ComunicacionesConfirmarAltaContactoTool;
+use App\Mcp\Tools\ComunicacionesVerificarDestinatarioCotizacionTool;
+use App\Mcp\Tools\ComunicacionesImprimirDocumentoTool;
+use App\Mcp\Tools\ComunicacionesConsultarEstadoImpresionTool;
+use App\Mcp\Tools\ComunicacionesImpresorasDisponiblesTool;
 use App\Mcp\Resources\ConfirmacionCorreoBalinsaApp;
 
 use App\Mcp\Tools\QuienSoyTool;
@@ -153,7 +157,11 @@ comunicaciones_mostrar_tarjeta_confirmacion tras preparar. NO pulsar botones,
 NO abrir enlaces firmados automaticamente. El empleado revisa y aprueba desde
 la tarjeta y su sesion web. Si la interfaz no esta disponible, conservar el
 flujo conversacional validado v1.1.0 con revision previa y confirmacion explicita.
-Niveles 2: web normal; 3: bloquear. Nunca afirmar entrega SMTP en estado encolado.';
+Niveles 2: web normal; 3: bloquear. Nunca afirmar entrega SMTP en estado encolado.
+Si el usuario pide imprimir un documento, usar comunicaciones_imprimir_documento directamente;
+ no usar destinatarios ni contactos CRM, no pedir aprobacion adicional, no usar herramientas
+ de correo a clientes; imprimir solo documentos autorizados y codigos de impresora conocidos.
+ La confirmacion SMTP no es prueba de papel impreso.';
 
     protected array $tools = [
         QuienSoyTool::class,
@@ -304,6 +312,10 @@ Niveles 2: web normal; 3: bloquear. Nunca afirmar entrega SMTP en estado encolad
         ComunicacionesPrepararAltaContactoTool::class,
         ComunicacionesRevisarAltaContactoTool::class,
         ComunicacionesConfirmarAltaContactoTool::class,
+        ComunicacionesVerificarDestinatarioCotizacionTool::class,
+        ComunicacionesImprimirDocumentoTool::class,
+        ComunicacionesConsultarEstadoImpresionTool::class,
+        ComunicacionesImpresorasDisponiblesTool::class,
 
     ];
 
