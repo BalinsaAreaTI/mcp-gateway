@@ -1,0 +1,64 @@
+Actualización v1.10.0 — Edición de instrumentos de hojas de salida
+================================================================
+
+Herramienta nueva: servicio_tecnico_editar_instrumento_hoja_salida.
+Corrige UN instrumento por llamada. Para varios instrumentos, repetir el flujo.
+La herramienta existente servicio_tecnico_ver_instrumentos_hoja_salida acepta
+instrumento_id para consultar los valores completos y version_actual antes de editar.
+
+REGLAS CONFIRMADAS
+- Servicio Tecnico edita instrumentos de sus hojas asignadas.
+- Operaciones, Gerencia y Area de TI editan todas las hojas visibles para su rol.
+- Únicamente el estado completada bloquea la edición; actas y reportes NO bloquean.
+- Tipo de instrumento y tipo de servicio son inmutables.
+- No se cambian IDs, vínculos, asignaciones, estados ni archivos.
+- Se modifica solo tb_instrumento_tarea. No se sincronizan instrumentos originales,
+  otras copias, actas, reportes ni servicios del pendiente.
+- Los campos son correcciones descriptivas de la copia histórica, no altas o cambios
+  del catálogo de Ventas. No se exige registrar marcas/modelos en otro módulo.
+
+CAMPOS EDITABLES
+marca, modelo, serie, codigo_int, capacidad_rango, resolucion_division,
+clase_tipo_metrologico, clase_exactitud, material, observaciones,
+puntos_calibracion, fecha_calibracion (AAAA-MM-DD), hora_servicio (HH:MM), n_cotizacion.
+Enviar únicamente los campos que cambian en cambios. Omitir conserva; texto vacío
+borra el campo si el usuario lo confirmó. Se validan formatos y longitudes.
+La corrección se realiza en una transacción con bloqueo de hoja e instrumento.
+version_actual es obligatoria: una consulta antigua se rechaza con 422 y requiere
+volver a consultar y confirmar. confirmado=true solo tras confirmación humana.
+
+INSTALACIÓN SISTEMA CENTRAL (Laravel 10)
+1. Copiar sistema/app/Http/Controllers/Mcp/McpHojasSalidaController.php.
+2. Integrar sistema/config/hojas-salida-edicion-BLOQUE.txt en config/mcp.php.
+3. Integrar sistema/routes/hojas-salida-edicion-BLOQUE.txt dentro del grupo MCP
+   existente con auth:sanctum, abilities:mcp y throttle:60,1. Edición: 20/minuto.
+4. Copiar la prueba a tests/Feature si se desea ejecutar la validación local.
+5. php artisan optimize:clear
+No hay migraciones, cambios de pantalla ni compilación frontend para esta entrega.
+La tabla existente debe incluir los campos listados y updated_at.
+
+INSTALACIÓN GATEWAY (Laravel 12)
+1. Copiar gateway/app/Mcp; BalinsaServer pasa de 1.9.2 a 1.10.0.
+2. composer dump-autoload -o --no-scripts
+3. php artisan optimize:clear
+4. Actualizar/reconectar el conector de ChatGPT o Claude para renovar tools/list.
+Los archivos completos incluyen la configuración MCP actualmente presente en
+esta copia local; comparar antes de reemplazar si el servidor remoto tiene cambios.
+
+FLUJO DE USO
+1. Buscar hoja y listar instrumentos.
+2. Consultar servicio_tecnico_ver_instrumentos_hoja_salida con id e instrumento_id.
+3. Mostrar valores actuales y nuevos y pedir confirmación explícita.
+4. Enviar id, instrumento_id, version_actual, confirmado=true y cambios.
+5. Informar los campos modificados. Regenerar el PDF si se solicita.
+Ejemplo de cambios: {"marca":"Marca corregida","capacidad_rango":"150 kg"}.
+
+VALIDACIÓN
+- 4 pruebas gateway: registro/esquema, token del empleado, filtrado, auditoría,
+  consulta puntual y traducción de errores.
+- 7 pruebas backend nuevas: alcance por rol, ajenos, campos fijos, estados,
+  actas/reportes, formatos, borrado explícito, conflicto, no-op y rollback.
+- 11 pruebas de regresión de hojas de salida y PDF.
+- Pruebas con SQLite en memoria y HTTP simulado, sin escribir datos de negocio.
+No se ha probado un conector remoto ni bloqueos simultáneos en MySQL real.
+No se despliega a producción ni se ejecutan migraciones.
