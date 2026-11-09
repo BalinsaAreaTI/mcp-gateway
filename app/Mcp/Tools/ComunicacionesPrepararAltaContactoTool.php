@@ -14,7 +14,7 @@ final class ComunicacionesPrepararAltaContactoTool extends Tool
 
     protected string $name = 'comunicaciones_preparar_alta_contacto';
     protected string $title = 'Preparar nuevo contacto externo en CRM';
-    protected string $description = 'Prepara UN nuevo contacto externo de un cliente existente sin crear aun el contacto y SIN enviar correo. Antes: obtiene el cliente_id con ventas_buscar_clientes, consulta comunicaciones_contactos_cliente, comprueba nombre, correo, cargo y telefono, y NO inventes datos. Presenta al usuario cliente, nombre, correo, cargo y telefono para revision. Despues pregunta confirmacion explicita en UN TURNO POSTERIOR. Nunca confirmes en el mismo turno de preparacion. Reutiliza la misma clave_operacion en reintentos identicos. No muestres hash, rutas ni datos tecnicos.';
+    protected string $description = 'Prepara UN contacto externo, no lo registra ni envia correos. Antes, obtiene cliente_id de comunicaciones_verificar_destinatario_cotizacion cuando provenga de una cotizacion, o de una consulta autorizada del cliente; comprueba el correo en CRM y solicita nombre, cargo y telefono (opcionales). Si el correo pertenece a otro cliente, no lo dupliques. Presenta cliente, nombre, correo, cargo y telefono completos y solicita confirmacion EXPLICITA en turno posterior; no confirmes en este turno. Clave_operacion estable para reintento identico. El registro no aprueba ni cambia solicitudes de correo anteriores; se prepara NUEVO correo despues de registrar. No muestres hashes, rutas ni detalles tecnicos.';
 
     public function schema(JsonSchema $schema): array
     {
