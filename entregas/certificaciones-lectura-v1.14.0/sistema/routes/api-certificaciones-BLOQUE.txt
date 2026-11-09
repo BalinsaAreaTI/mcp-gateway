@@ -1,0 +1,9 @@
+// Dentro del grupo mcp existente (auth:sanctum, abilities:mcp, throttle:60,1).
+Route::get('certificaciones/solicitudes', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'buscar']);
+Route::get('certificaciones/certificados', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'certificados']);
+Route::get('certificaciones/por-vencer', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'porVencer']);
+Route::get('certificaciones/filtros', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'filtros']);
+Route::get('certificaciones/catalogos', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'catalogos']);
+Route::get('certificaciones/solicitudes/{id}', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'ver'])->whereNumber('id');
+Route::get('certificaciones/solicitudes/{id}/instrumentos', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'instrumentos'])->whereNumber('id');
+Route::get('certificaciones/solicitudes/{id}/archivos', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'archivos'])->whereNumber('id');

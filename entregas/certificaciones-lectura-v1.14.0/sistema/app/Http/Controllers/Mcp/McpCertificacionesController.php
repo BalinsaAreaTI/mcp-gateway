@@ -1,0 +1,271 @@
+<?php
+
+namespace App\Http\Controllers\Mcp;
+
+use App\Http\Controllers\Controller;
+use Carbon\CarbonImmutable;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+
+/**
+ * Lecturas de SolicitudCertificacionController y PorVencer.vue.
+ * La pantalla no limita por asesor: todos los roles autorizados ven todos los activos.
+ * Se refuerza canAccess en servidor, incluso para usuarios con varios roles.
+ * No sirve ni genera certificados oficiales; archivos devuelve solo metadatos.
+ */
+class McpCertificacionesController extends Controller
+{
+    private const CATALOGOS = [
+        'marcas' => ['tb_marcas_certificacion', 'idMarcaCert', 'nombreMarcaCert', 'tipoInstrumento'],
+        'modelos' => ['tbmodelo_pendientes', 'id', 'nombre_modelo', 'tipo_instrumento'],
+        'escalas' => ['tb_escala', 'idEscala', 'nombreDiv'],
+        'capacidad_escala' => ['tb_capacidad_escala', 'id', 'capacidad'],
+        'procedencias_balanza' => ['tb_procedencia_balanza', 'id', 'nombre'],
+        'procedencias_termometro' => ['tb_procedencia_termometro', 'id', 'nombre'],
+        'valores_nominales' => ['tb_pesa_valor_nominal', 'id', 'nombre'],
+        'clases_exactitud' => ['tb_pesa_clase_exactitud', 'id', 'nombre'],
+        'elementos_sensor' => ['tb_termometro_elemento_sensor', 'id', 'nombre'],
+    ];
+
+    private function acceso(Request $request): void
+    {
+        $roles = $request->user()->roles->pluck('name')->all();
+        $permitidos = array_merge(config('mcp.certificaciones_roles', []), config('mcp.roles_acceso_total', ['Gerencia']));
+        abort_if(array_intersect($roles, config('mcp.certificaciones_roles_bloqueados', ['Servicio Tecnico', 'Area de Almacen'])), 403, 'Tu rol no tiene acceso a certificaciones.');
+        abort_unless(array_intersect($roles, $permitidos), 403, 'Tu rol no tiene acceso a certificaciones.');
+    }
+
+    private function auditar(Request $request, string $accion): void
+    {
+        Log::info('mcp.certificaciones', ['user_id' => $request->user()->id, 'accion' => $accion]);
+    }
+
+    private function paginacion(): array
+    {
+        return ['pagina' => ['nullable', 'integer', 'min:1'], 'limite' => ['nullable', 'integer', 'min:1', 'max:20']];
+    }
+
+    private function limpiar($value)
+    {
+        if (is_string($value)) {
+            return Str::limit($value, 1000);
+        }
+        if (is_object($value)) {
+            $value = (array) $value;
+        }
+        if (is_array($value)) {
+            return array_map(fn ($v) => $this->limpiar($v), $value);
+        }
+
+        return $value;
+    }
+
+    private function lista($query, array $data, Request $request, string $accion)
+    {
+        $pagina = (int) ($data['pagina'] ?? 1);
+        $limite = (int) ($data['limite'] ?? 10);
+        $cargar = fn () => [(clone $query)->count(), (clone $query)->forPage($pagina, $limite)->get()];
+        [$total, $rows] = $accion === 'catalogos'
+            ? Cache::remember('mcp.certificaciones.catalogos.v1.'.hash('sha256', json_encode($data)), 600, $cargar)
+            : $cargar();
+        if ($accion === 'por_vencer') {
+            $hoy = CarbonImmutable::now('America/Lima')->startOfDay();
+            foreach ($rows as $row) {
+                $row->dias_restantes = (int) $hoy->diffInDays(CarbonImmutable::parse($row->fecha_caducidad, 'America/Lima'), false);
+            }
+        }
+        $this->auditar($request, $accion);
+
+        return response()->json(['alcance' => 'todos_activos', 'pagina' => $pagina, 'limite' => $limite,
+            'total' => $total, 'hay_mas' => $pagina * $limite < $total,
+            'aviso' => 'Textos limitados a 1000 caracteres. Los archivos son metadatos, no enlaces de descarga.',
+            'textos_recortados' => json_encode($rows->all()) !== json_encode($this->limpiar($rows->all())),
+            'data' => $this->limpiar($rows->all())]);
+    }
+
+    private function fechaSql(string $campo): string
+    {
+        // Campos fijos internos: nunca se interpola un identificador enviado por el agente.
+        return "CASE WHEN $campo IS NULL OR $campo = '' THEN NULL WHEN $campo LIKE '%/%' THEN DATE_FORMAT(STR_TO_DATE($campo, '%d/%m/%Y'), '%Y-%m-%d') ELSE DATE_FORMAT($campo, '%Y-%m-%d') END";
+    }
+
+    private function base()
+    {
+        return DB::table('tb_certificado as a')->join('clientes as b', 'b.id', '=', 'a.idCliente')
+            ->where('a.estado_soli', 1);
+    }
+
+    private function seleccion($query)
+    {
+        return $query->select(['a.idCertificado as id', 'a.idCliente as cliente_id', 'b.razonSocial as cliente',
+            'b.numeroDocumento as documento', 'a.direccionCertificado as direccion', 'a.created_at as creado_en',
+            'a.tiempoCaducidad as tiempo_caducidad'])
+            ->selectRaw($this->fechaSql('a.fechaSolicitud').' as fecha_solicitud')
+            ->selectRaw($this->fechaSql('a.fechaCaducidad').' as fecha_caducidad')
+            ->selectRaw('(SELECT COUNT(*) FROM tb_certificado_archivo f WHERE f.id_certificado = a.idCertificado) as cantidad_archivos')
+            ->selectRaw("CASE WHEN EXISTS (SELECT 1 FROM tb_certificado ch WHERE ch.parent_solicitud_id = a.idCertificado) THEN 'Pendiente' ELSE 'Sin atender' END as estado_renovacion");
+    }
+
+    private function registro(Request $request, int $id)
+    {
+        $this->acceso($request);
+        $row = $this->seleccion($this->base()->where('a.idCertificado', $id))
+            ->addSelect(['a.contactoCertificado as contacto', 'a.telefonoContactoCertificado as telefono'])->first();
+        abort_unless($row, 404, 'Solicitud no encontrada.');
+
+        return $row;
+    }
+
+    private function filtrosLista(Request $request): array
+    {
+        return $request->validate($this->paginacion() + [
+            'cliente' => ['nullable', 'string', 'max:100'], 'cliente_id' => ['nullable', 'integer', 'min:1'],
+            'desde' => ['nullable', 'date_format:Y-m-d'], 'hasta' => array_merge(['nullable', 'date_format:Y-m-d'], $request->filled('desde') ? ['after_or_equal:desde'] : []),
+            'estado_archivos' => ['nullable', Rule::in(['Pendiente', 'Recibido'])],
+        ]);
+    }
+
+    private function aplicar($query, array $data)
+    {
+        if (! empty($data['cliente'])) {
+            $query->where('b.razonSocial', 'like', '%'.addcslashes($data['cliente'], '\\%_').'%');
+        }
+        if (! empty($data['cliente_id'])) {
+            $query->where('a.idCliente', $data['cliente_id']);
+        }
+        if (! empty($data['desde'])) {
+            $query->where('a.created_at', '>=', $data['desde'].' 00:00:00');
+        }
+        if (! empty($data['hasta'])) {
+            $query->where('a.created_at', '<', CarbonImmutable::parse($data['hasta'])->addDay()->toDateString());
+        }
+        if (! empty($data['estado_archivos'])) {
+            $sql = 'EXISTS (SELECT 1 FROM tb_certificado_archivo f WHERE f.id_certificado = a.idCertificado)';
+            $query->whereRaw(($data['estado_archivos'] === 'Pendiente' ? 'NOT ' : '').$sql);
+        }
+
+        return $query;
+    }
+
+    public function buscar(Request $request)
+    {
+        $this->acceso($request);
+        $data = $this->filtrosLista($request);
+
+        return $this->lista($this->seleccion($this->aplicar($this->base(), $data))->orderByDesc('a.idCertificado'), $data, $request, 'buscar');
+    }
+
+    public function certificados(Request $request)
+    {
+        $this->acceso($request);
+        $data = $this->filtrosLista($request);
+        $hoy = CarbonImmutable::now('America/Lima');
+        $data['desde'] = $data['desde'] ?? $hoy->subMonths(2)->toDateString();
+        $data['hasta'] = $data['hasta'] ?? $hoy->toDateString();
+        validator($data, ['hasta' => 'after_or_equal:desde'])->validate();
+
+        return $this->lista($this->seleccion($this->aplicar($this->base(), $data))->orderByDesc('a.created_at')->orderByDesc('a.idCertificado'), $data, $request, 'certificados');
+    }
+
+    public function ver(Request $request, int $id)
+    {
+        $row = $this->registro($request, $id);
+        $slots = 0;
+        foreach (DB::table('tb_instrumento')->where('id_certificado', $id)->select('cantidad', 'serie')->cursor() as $i) {
+            $series = json_decode($i->serie ?? '[]', true);
+            $slots += is_array($series) && count($series) ? count($series) : max((int) $i->cantidad, 1);
+        }
+        $this->auditar($request, 'ver');
+
+        return response()->json($this->limpiar((array) $row) + ['archivos_esperados' => $slots,
+            'archivos_pendientes' => max($slots - $row->cantidad_archivos, 0),
+            'aviso' => 'Conteo de archivos como en pantalla; no garantiza cobertura de cada serie. Textos limitados a 1000 caracteres.',
+            'acciones_permitidas' => ['ver_instrumentos', 'ver_archivos'], 'motivo_restriccion' => 'Esta entrega solo permite lectura.']);
+    }
+
+    public function instrumentos(Request $request, int $id)
+    {
+        $this->registro($request, $id);
+        $data = $request->validate($this->paginacion() + ['instrumento_id' => ['nullable', 'integer', 'min:1']]);
+        $q = DB::table('tb_instrumento')->where('id_certificado', $id);
+        if (! empty($data['instrumento_id'])) {
+            $q->where('id_Instrumento', $data['instrumento_id']);
+            abort_unless((clone $q)->exists(), 404, 'Instrumento no encontrado.');
+        }
+        // JSON conservado como texto acotado: no inventar series cuando quede truncado.
+        $q->select(['id_Instrumento as id', 'tipoInstrumento as tipo_instrumento', 'cantidad', 'marca', 'modelo',
+            'valorNominal as valor_nominal', 'procedencia', 'capacidadMax as capacidad_maxima', 'forma',
+            'interbaloDesde as intervalo_desde', 'interbaloHasta as intervalo_hasta', 'resolucion',
+            'elementoSensor as elemento_sensor', 'puntosCalibracion as puntos_calibracion_json', 'serie as series_json', 'material', 'clase_exactitud']);
+
+        return $this->lista($q->orderBy('id_Instrumento'), $data, $request, 'instrumentos');
+    }
+
+    public function archivos(Request $request, int $id)
+    {
+        $this->registro($request, $id);
+        $data = $request->validate($this->paginacion() + ['instrumento_id' => ['nullable', 'integer', 'min:1']]);
+        if (! empty($data['instrumento_id'])) {
+            abort_unless(DB::table('tb_instrumento')->where('id_certificado', $id)->where('id_Instrumento', $data['instrumento_id'])->exists(), 404, 'Instrumento no encontrado.');
+        }
+        $q = DB::table('tb_certificado_archivo')->where('id_certificado', $id);
+        if (! empty($data['instrumento_id'])) {
+            $q->where('id_instrumento', $data['instrumento_id']);
+        }
+
+        return $this->lista($q->select(['id_archivo as id', 'id_instrumento as instrumento_id', 'nombre_original', 'serie', 'created_at as creado_en'])
+            ->orderByDesc('id_archivo'), $data, $request, 'archivos');
+    }
+
+    public function porVencer(Request $request)
+    {
+        $this->acceso($request);
+        $data = $request->validate($this->paginacion() + ['dias' => ['nullable', 'integer', Rule::in([7, 15, 30])],
+            'modo' => ['nullable', Rule::in(['por_vencer', 'caducados'])], 'cliente' => ['nullable', 'string', 'max:100']]);
+        $hoy = CarbonImmutable::now('America/Lima')->startOfDay();
+        $caducados = ($data['modo'] ?? 'por_vencer') === 'caducados';
+        $desde = $caducados ? $hoy->subDays(7) : $hoy;
+        $hasta = $caducados ? $hoy->subDay() : $hoy->addDays((int) ($data['dias'] ?? 30));
+        $q = $this->aplicar($this->base(), $data)
+            ->whereRaw('EXISTS (SELECT 1 FROM tb_certificado_archivo f WHERE f.id_certificado = a.idCertificado)')
+            ->whereRaw('NOT EXISTS (SELECT 1 FROM tb_certificado ch JOIN tb_certificado_archivo f ON f.id_certificado = ch.idCertificado WHERE ch.parent_solicitud_id = a.idCertificado)')
+            ->whereBetween(DB::raw($this->fechaSql('a.fechaCaducidad')), [$desde->toDateString(), $hasta->toDateString()]);
+
+        return $this->lista($this->seleccion($q)->orderByRaw($this->fechaSql('a.fechaCaducidad'))->orderBy('a.idCertificado'), $data, $request, 'por_vencer');
+    }
+
+    public function filtros(Request $request)
+    {
+        $this->acceso($request);
+        $this->auditar($request, 'filtros');
+
+        return response()->json(['estado_archivos' => ['Pendiente', 'Recibido'], 'estado_renovacion' => ['Sin atender', 'Pendiente'],
+            'modos_vencimiento' => ['por_vencer', 'caducados'], 'dias' => [7, 15, 30], 'zona_horaria' => 'America/Lima',
+            'catalogos' => array_keys(self::CATALOGOS), 'nota' => 'Recibido significa al menos un archivo; no implica que todos los instrumentos tengan certificado.']);
+    }
+
+    public function catalogos(Request $request)
+    {
+        $this->acceso($request);
+        $data = $request->validate($this->paginacion() + ['catalogo' => ['required', Rule::in(array_keys(self::CATALOGOS))],
+            'tipo' => ['nullable', 'integer', 'min:1', 'max:3']]);
+        [$tabla, $id, $nombre] = self::CATALOGOS[$data['catalogo']];
+        $tipo = self::CATALOGOS[$data['catalogo']][3] ?? null;
+        $q = DB::table($tabla)->select([$id.' as id', $nombre.' as nombre']);
+        if ($tipo) {
+            $q->addSelect($tipo.' as tipo');
+            if (isset($data['tipo'])) {
+                $q->where($tipo, $data['tipo']);
+            }
+        }
+        if ($data['catalogo'] === 'capacidad_escala') {
+            $q->addSelect('division');
+        }
+
+        return $this->lista($q->orderBy($nombre)->orderBy($id), $data, $request, 'catalogos');
+    }
+}

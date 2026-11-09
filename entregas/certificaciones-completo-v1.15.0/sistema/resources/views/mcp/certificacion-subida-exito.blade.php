@@ -1,0 +1,1 @@
+<!doctype html><html lang="es"><meta charset="utf-8"><title>Certificados guardados</title><h1>Archivos guardados</h1><p>Se guardaron {{ $cantidad }} PDF en la solicitud {{ $id }}. Puedes cerrar esta ventana y consultar nuevamente el detalle en el asistente.</p></html>
