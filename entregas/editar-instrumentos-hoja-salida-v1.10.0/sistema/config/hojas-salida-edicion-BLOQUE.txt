@@ -1,0 +1,4 @@
+// Añadir junto a las claves hojas_salida_roles y hojas_salida_roles_ve_todo.
+'hojas_salida_roles_edicion' => ['Operaciones', 'Servicio Tecnico', 'Gerencia', 'Area de TI'],
+// El alcance de lectura existente también se aplica a la edición.
+// Solo el estado completada bloquea, según la regla confirmada por el usuario.
