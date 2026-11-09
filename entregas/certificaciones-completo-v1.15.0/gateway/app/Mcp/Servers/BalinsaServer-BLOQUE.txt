@@ -1,0 +1,24 @@
+// Integrar en BalinsaServer; mantener herramientas existentes, evitar duplicados.
+// Version: 1.15.0
+// Agregar estas clases a $tools:
+\App\Mcp\Tools\CertificacionesAbrirArchivoCertificadoTool::class,
+\App\Mcp\Tools\CertificacionesAgregarCatalogoTool::class,
+\App\Mcp\Tools\CertificacionesBuscarCertificadosTool::class,
+\App\Mcp\Tools\CertificacionesBuscarPorVencerTool::class,
+\App\Mcp\Tools\CertificacionesBuscarSolicitudesTool::class,
+\App\Mcp\Tools\CertificacionesCatalogosTool::class,
+\App\Mcp\Tools\CertificacionesContactosClienteTool::class,
+\App\Mcp\Tools\CertificacionesEditarFechasTool::class,
+\App\Mcp\Tools\CertificacionesEliminarSolicitudTool::class,
+\App\Mcp\Tools\CertificacionesFiltrosTool::class,
+\App\Mcp\Tools\CertificacionesGenerarPdfSolicitudTool::class,
+\App\Mcp\Tools\CertificacionesPrepararSubidaCertificadoTool::class,
+\App\Mcp\Tools\CertificacionesRegistrarContactoTool::class,
+\App\Mcp\Tools\CertificacionesRegistrarSolicitudTool::class,
+\App\Mcp\Tools\CertificacionesRenovarSolicitudTool::class,
+\App\Mcp\Tools\CertificacionesVerArchivosCertificadoTool::class,
+\App\Mcp\Tools\CertificacionesVerInstrumentosSolicitudTool::class,
+\App\Mcp\Tools\CertificacionesVerSolicitudTool::class,
+
+// Agregar/reemplazar el segmento Certificaciones de $instructions:
+Certificaciones: usa certificaciones_buscar_solicitudes, certificaciones_ver_solicitud y las consultas de instrumentos y archivos. certificaciones_buscar_certificados filtra fechas de creación (últimos dos meses por defecto); certificaciones_buscar_por_vencer filtra caducidad. Recibido no garantiza cobertura completa. Para crear solicitudes consulta catálogos y contactos; confirma datos antes de registrar. Reutiliza clave_operacion en reintentos. Para fechas, renovación, baja lógica o preparación de subida, consulta certificaciones_ver_solicitud y envía version_actual después de confirmar. Los enlaces requieren sesión web del mismo empleado: muéstralos completos y no los abras tú. Solo el usuario sube PDF en el navegador. Los certificados oficiales no se generan; certificaciones_generar_pdf_solicitud genera únicamente la solicitud de calibración. Eliminar requiere Area de TI.

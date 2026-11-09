@@ -27,7 +27,7 @@ class AlmacenRegistrarSubcategoriaTool extends Tool
     public function handle(Request $request): Response
     {
         return $this->enviar($request, 'almacen/catalogo/subcategorias', [
-                'categoria_id' => $request->get('categoria_id'),
+                'tbcategoria_id' => $request->get('categoria_id'),
                 'nombre' => $request->get('nombre'),
             ], 'No se pudo realizar la operacion: ');
     }

@@ -1,0 +1,12 @@
+// Agregar dentro del return de config/mcp.php. No reemplazar otras claves.
+// Lista explícita más restrictiva que la pantalla (que permite cualquier rol no bloqueado).
+'certificaciones_roles' => ['Administracion', 'Gerencia', 'Area de TI', 'Asesor de Ventas', 'Jefe de Ventas', 'Operaciones'],
+// El bloqueo de la pantalla prevalece incluso con múltiples roles.
+'certificaciones_roles_bloqueados' => ['Servicio Tecnico', 'Area de Almacen'],
+'certificaciones_roles_registrar' => ['Administracion', 'Gerencia', 'Area de TI', 'Asesor de Ventas'],
+'certificaciones_roles_editar_fechas' => ['Administracion', 'Gerencia', 'Area de TI', 'Asesor de Ventas', 'Jefe de Ventas', 'Operaciones'],
+'certificaciones_roles_renovar' => ['Administracion', 'Gerencia', 'Area de TI', 'Asesor de Ventas', 'Jefe de Ventas', 'Operaciones'],
+'certificaciones_roles_subir' => ['Administracion', 'Gerencia', 'Area de TI', 'Asesor de Ventas', 'Jefe de Ventas', 'Operaciones'],
+'certificaciones_roles_eliminar' => ['Area de TI'],
+'certificaciones_formas' => ['PARALELEPIPEDA', 'CILINDRICA CON BOTON', 'CILINDRICA SOLA'],
+'certificaciones_materiales' => ['ACERO INOXIDABLE', 'BRONCE', 'FIERRO FUNDIDO', 'CROMADO', 'BRONCE CROMADO', 'ALEACION METALICA'],

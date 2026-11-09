@@ -1,0 +1,219 @@
+Certificaciones v1.15.0 — integración de solicitudes y archivos
+=============================================================
+
+ENTREGA ACUMULATIVA
+Reemplaza la entrega de lectura v1.14.0 para este módulo. Contiene 18 herramientas
+(8 de lectura y 10 nuevas), controladores, servicio PDF, vistas, configuración,
+rutas y una migración de soporte. El gateway local está actualizado.
+No se modificó D:/Sistema_Balinsa_23_10 ni se desplegó en producción.
+No se emiten certificados oficiales: se registran solicitudes, se reciben los
+PDF proporcionados por el empleado y se consultan esos documentos existentes.
+
+HERRAMIENTAS NUEVAS
+1. certificaciones_registrar_solicitud
+   cliente_id, direccion, fecha_emision (AAAA-MM-DD), meses_vigencia (1..120),
+   contacto_id o contacto/telefono, instrumentos (1..30), clave_operacion UUID,
+   confirmado. Una serie por unidad; cantidad coincide con número de series.
+   Cada serie requiere num_serie e identificacion; balanzas además ubicacion.
+   Tipos exactos: Balanza, Pesa, Termometro. Consultar filtros y catálogos.
+   Marca y procedencia obligatorias. Pesas usan marca NO INDICA.
+   Balanza: modelo, cap_maxima, escalas. Pesa: valor_nominal, forma, material,
+   clase_exactitud. Termometro: modelo, desde_medicion, hasta_medicion,
+   resolucion, elemento_sensor; puntos_calibrar es lista opcional de strings.
+   contacto_id debe pertenecer al cliente; prevalecen sus datos guardados.
+   Se calcula caducidad con desbordamiento de fin de mes como Date.setMonth:
+   31/01/2026 + 1 mes = 03/03/2026. No se acepta una caducidad inventada.
+2. certificaciones_editar_fechas
+   id, fecha_emision, fecha_caducidad, version_actual, confirmado.
+   Conserva tiempoCaducidad y archivos existentes, igual a la pantalla.
+3. certificaciones_renovar_solicitud
+   id, version_actual, confirmado. Crea una hija sin copiar los PDF.
+   Fechas desde hoy en America/Lima, con vigencia original o 12 meses cuando
+   está vacía. Requiere archivos originales y no permite otra hija existente.
+4. certificaciones_eliminar_solicitud
+   id, version_actual, confirmado. Solo Area de TI. Baja lógica estado_soli=0;
+   no elimina instrumentos, PDF ni solicitudes hijas.
+5. certificaciones_preparar_subida_certificado
+   id, instrumento_id, serie, version_actual, confirmado.
+   Devuelve url_subida de 10 minutos, de un solo uso, ligada al empleado,
+   solicitud, instrumento, serie y versión. El usuario abre el navegador,
+   inicia sesión con la MISMA cuenta, elige archivos y confirma personalmente.
+   Hasta 5 PDF de 50 MB cada uno por enlace. No se reciben binarios por MCP.
+6. certificaciones_abrir_archivo_certificado
+   id, archivo_id, modo (ver/descargar). Enlace temporal para un PDF existente.
+7. certificaciones_generar_pdf_solicitud
+   id, modo (ver/descargar). Genera al abrir la solicitud de calibración de
+   Index.vue mediante dompdf; no genera ni firma certificados de calibración.
+8. certificaciones_contactos_cliente
+   cliente_id, pagina, limite. Contactos activos del formulario, paginados.
+9. certificaciones_registrar_contacto
+   cliente_id, nombre, telefono/cargo/correo opcionales, clave_operacion,
+   confirmado. Consultar primero contactos para evitar duplicados de negocio.
+10. certificaciones_agregar_catalogo
+   catalogo, nombre, tipo (1 Balanza / 2 Termometro para marcas/modelos),
+   division (obligatoria para capacidad_escala), clave_operacion, confirmado.
+   Catálogos permitidos: marcas, modelos, escalas, capacidad_escala,
+   procedencias_balanza, procedencias_termometro, valores_nominales,
+   clases_exactitud y elementos_sensor. No edita valores existentes.
+   El catálogo paginado mantiene caché de 10 minutos. Las validaciones de alta
+   consultan la base directamente y reconocen inmediatamente los valores nuevos.
+
+HERRAMIENTAS DE LECTURA INCLUIDAS
+certificaciones_buscar_solicitudes, certificaciones_buscar_certificados,
+certificaciones_ver_solicitud, certificaciones_ver_instrumentos_solicitud,
+certificaciones_ver_archivos_certificado, certificaciones_buscar_por_vencer,
+certificaciones_filtros, certificaciones_catalogos.
+El detalle ahora devuelve version_actual y acciones_permitidas.
+Filtros añade formas, materiales y códigos de tipo tomados de Create.vue.
+Listas de máximo 20, por defecto 10. Textos acotados a 1000 caracteres;
+textos_recortados advierte cuando JSON de series/puntos queda incompleto.
+Para subir una serie truncada, consultarla en el sistema; no adivinarla.
+
+PERMISOS Y CONFIRMACIÓN
+- Acceso: Administracion, Gerencia, Area de TI, Asesor de Ventas, Jefe de Ventas,
+  Operaciones y roles_acceso_total, con lista explícita configurable.
+- Servicio Tecnico y Area de Almacen bloqueados, incluso en usuarios multirrol,
+  como canAccess de las pantallas.
+- Crear solicitudes, contactos y catálogos: Administracion, Gerencia, Area de TI,
+  Asesor de Ventas, según canRegister de Index.vue.
+- Editar fechas, renovar y subir: los seis roles de acceso explícito.
+- Eliminar: EXCLUSIVAMENTE Area de TI, como isAreaTI de Index.vue. Gerencia no
+  recibe una excepción automática que lo haga menos restrictivo que la pantalla.
+- No hay filtro por asesor en estos listados de pantalla: todos los autorizados
+  ven solicitudes activas de todos los clientes.
+- Roles no permitidos: 403. Solicitudes inactivas/no visibles y recursos que no
+  pertenecen a la solicitud: 404. Validaciones y versión obsoleta: 422.
+- Toda escritura API exige confirmado. La descripción obliga a mostrar valores
+  actuales/nuevos y obtener confirmación explícita. Al subir se confirma además
+  en el formulario web. No hay edición de instrumentos persistidos: la edición
+  de Create.vue ocurre en el borrador antes de registrar, no en una ruta de BD.
+
+INTEGRIDAD Y REINTENTOS
+- Altas con clave_operacion UUID por usuario, huella del contenido y respuesta
+  persistida. Reutilizar exactamente la misma clave y datos en un reintento.
+  Una clave usada con otro contenido se rechaza. Otra clave no deduplica una
+  operación comercial distinta: consultar antes de crear.
+- Creación e instrumentos en una transacción; contacto debe ser del cliente.
+  Catálogos, campos por tipo y cantidades/series validados en el sistema.
+- Fechas, renovación, baja y carga comprueban version_actual bajo bloqueo del
+  padre. Los cambios en instrumentos, archivos o hijas invalidan esa versión.
+- Renovaciones duplicadas se rechazan incluso si la hija está inactiva, siguiendo
+  la presencia de hijas que evalúa el listado original.
+- Al renovar se conservan material y clase_exactitud: el controlador de pantalla
+  los omitía. Esta diferencia explícita evita perder información de pesas.
+- Las altas MCP de catálogo se serializan y reutilizan un valor idéntico.
+- Estos bloqueos protegen las operaciones MCP. Las rutas antiguas de la pantalla
+  no usan necesariamente los mismos bloqueos: la concurrencia con ellas requiere
+  validación en el entorno real; no se han modificado esos controladores.
+
+ENLACES Y PDF
+- Todos los enlaces nuevos requieren sesión web del mismo empleado.
+- Firma RELATIVA + APP_URL. Validación en controlador; no middleware signed.
+  Se toleran únicamente utm_source, utm_medium, utm_campaign, utm_content,
+  utm_term, fbclid, gclid. Cambios a id, usuario, token, modo o expires invalidan
+  la firma. Vencimiento de 10 minutos. El asistente muestra la URL sin alterarla.
+- El ticket de carga almacena un hash del token; abrir el formulario no consume
+  el ticket. Guardar lo consume en la transacción. No se pueden repetir cargas.
+- Se revalidan rol, estado activo, versión, pertenencia del instrumento y serie.
+  Se rechazan series ambiguas o ya atendidas. Si no hay series guardadas, omitir
+  serie. Los nombres enviados no determinan la ruta física del archivo.
+- Validación de extensión, MIME, firma %PDF-, tamaño y cantidad; nombres físicos
+  aleatorios. Si falla la BD se revierten filas y se limpian los archivos nuevos.
+  Esto no constituye antivirus ni validación del contenido técnico del certificado.
+- Una subida cambia la versión de la solicitud. Obtener un nuevo detalle antes
+  de preparar otro enlace; los enlaces previos de esa solicitud pueden caducar
+  por cambio de versión aunque todavía estén dentro de sus 10 minutos.
+- Lectura de PDF existente: comprueba pertenencia y realpath dentro del disco
+  certificados. Cache-Control private, no-store; Referrer-Policy no-referrer.
+- Se usa el disco certificados existente para que los archivos sean visibles en
+  Certificados.vue. Actualmente su raíz es public/certificados. Los enlaces MCP
+  están protegidos, pero esta entrega NO vuelve privados los archivos ya servidos
+  directamente por el servidor ni corrige las rutas web antiguas. Para privacidad
+  integral debe migrarse ese almacenamiento y sus lectores en una tarea separada.
+- PDF de solicitud reutiliza detalleSolicitudCertificacion después de autorizar,
+  desglosa por series y conserva los campos/orden y conteos de Index.vue. Textos
+  fijos y logo en config/certificacion_pdf.php; no se carga contenido remoto.
+- Defectos de pantalla conservados: puntos de termómetro guardados como strings
+  aparecen vacíos porque el PDF espera objetos temperatura; TERMÓMETRO acentuado
+  no entra en la rama TERMOMETRO del detalle original. No se inventan datos.
+- Dompdf reproduce contenido con tablas; tipografía y paginación pueden diferir
+  de jsPDF. Se generó un PDF sintético de 18 instrumentos/7 páginas. Falta cotejo
+  visual con solicitudes reales y verificación del logo en el servidor final.
+
+INSTALACIÓN — SISTEMA LARAVEL 10, ANTES DEL GATEWAY
+1. Respaldar los archivos que se reemplazarán y la BD según el procedimiento
+   habitual. Copiar sistema/app, sistema/resources y config/certificacion_pdf.php.
+   No reemplazar SolicitudCertificacionController ni sus componentes Vue.
+2. Copiar la migración de sistema/database/migrations y ejecutar:
+   php artisan migrate
+   Crea mcp_certificacion_operaciones, mcp_certificacion_subidas y
+   mcp_certificacion_catalogo_lock. No altera tablas de negocio existentes.
+3. Integrar sistema/config/mcp-certificaciones-BLOQUE.txt en config/mcp.php.
+   Si se instaló v1.14.0, actualizar sus claves sin duplicarlas.
+4. Integrar sistema/routes/api-certificaciones-BLOQUE.txt DENTRO del grupo mcp
+   existente con auth:sanctum, abilities:mcp y throttle:60,1. Sustituir las rutas
+   v1.14.0 del módulo; no pegarlas dos veces. Escrituras POST con throttle propio.
+5. Integrar sistema/routes/web-certificaciones-BLOQUE.txt en routes/web.php,
+   antes de cualquier fallback. Conservar grupo web (sesión y CSRF), auth y
+   throttle. No excluir estas rutas del middleware CSRF ni añadir signed.
+6. dompdf ya existe en el sistema de referencia. Si el destino no lo tiene,
+   instalar barryvdh/laravel-dompdf en el entorno de construcción y subir vendor
+   siguiendo la guía. Comprobar gd/mbstring/fileinfo y el logo configurado.
+7. APP_URL debe ser la URL HTTPS real. El usuario necesita sesión del sistema en
+   ese navegador. El disco certificados debe tener permiso de escritura.
+   Revisar upload_max_filesize >= 50M, post_max_size suficiente para hasta 5 PDF,
+   límite del servidor web y espacio de almacenamiento. Los límites más bajos
+   del hosting prevalecen y pueden impedir una carga válida para la aplicación.
+8. php artisan config:clear
+   php artisan optimize:clear
+   php artisan route:list --path=certificaciones
+
+INSTALACIÓN — GATEWAY LARAVEL 12
+1. Copiar los 18 archivos gateway/app/Mcp/Tools/Certificaciones*Tool.php.
+2. Integrar gateway/app/Mcp/Servers/BalinsaServer-BLOQUE.txt: registrar cada clase
+   una sola vez, actualizar instrucciones y versión a 1.15.0. Se incluye el
+   servidor completo de esta revisión como referencia; conservar cambios ajenos.
+3. composer2 dump-autoload -o --no-scripts
+   php artisan optimize:clear
+4. Recrear los conectores Claude/ChatGPT para que descubran las herramientas.
+   No publicar el gateway nuevo antes de instalar controlador, rutas y migración.
+
+PRUEBAS EJECUTADAS
+- 29 pruebas, 369 aserciones: lectura y escrituras, roles y multirrol, creación
+  atómica, reintento idempotente, claves reutilizadas con otros datos, contacto
+  ajeno, catálogos, validación por tipo, series/cantidades, fechas y versión,
+  baja solo TI, renovación única y conservación de material/clase, tickets,
+  firma modificada/expirada, tracking permitido, usuario incorrecto, PDF inválido,
+  carga real en disco de prueba, uso único, limpieza ante fallo de la segunda
+  inserción, solicitud inactiva, pertenencia y ruta de archivos, rutas/middleware,
+  esquemas MCP y filtrado de propiedades anidadas.
+- Pruebas aisladas en SQLite en memoria y disco de prueba, sin datos reales.
+  DATE_FORMAT/STR_TO_DATE se emulan; no prueban equivalencia completa con MySQL.
+- Render dompdf real usando las dependencias existentes del sistema: PDF con
+  18 instrumentos en 7 páginas. Proyección PDF comprobada con casos sintéticos.
+- Sintaxis php -l de los archivos entregados y formato Pint.
+- Desde D:/mcp-gateway:
+  php -d extension=pdo_sqlite vendor/phpunit/phpunit/phpunit --filter=Certificaciones
+  Las pruebas se incluyen bajo pruebas/ con sus rutas relativas tests/ y usan
+  el controlador de esta entrega. Copiarlas al gateway para reproducirlas.
+- No probado: instalación real Laravel 10/MySQL, concurrencia real entre procesos,
+  carga de 50 MB en hosting, login/CSRF por navegador en producción, conectores
+  y auditoría de punta a punta. La configuración de middleware sí está comprobada;
+  los tests de controlador no sustituyen estas pruebas de despliegue.
+
+PRUEBA MANUAL TRAS INSTALAR
+1. Como Asesor, consultar cliente/catálogos/contactos, crear una solicitud de
+   prueba con confirmación y repetir la llamada con la misma clave: mismo id.
+2. Consultar detalle, editar fechas con esa versión. Repetir con versión anterior:
+   422. Confirmar que los PDF existentes no cambian por editar las fechas.
+3. Preparar carga para una serie: abrir en sesión correcta, subir un PDF, consultar
+   archivos y abrirlo. Repetir el enlace de carga: rechazado. Probar otra cuenta,
+   enlace vencido, serie ajena y archivo que no sea PDF.
+4. Renovar una solicitud con PDF, comprobar hija e instrumentos/material/clase;
+   repetir renovación: rechazada. Confirmar su comportamiento en PorVencer.vue.
+5. Baja lógica con TI: desaparece de lecturas. Asesor/Gerencia sin TI: 403.
+6. Comparar PDF de solicitud con Index.vue, en varias páginas, con logo y los
+   tres tipos de instrumento. Verificar los defectos documentados antes de cambiar
+   el comportamiento de la pantalla o del generador.
+7. Revisar agent_actions en gateway y mcp.certificaciones en laravel.log del
+   sistema. Revocar los tokens de prueba al terminar.
