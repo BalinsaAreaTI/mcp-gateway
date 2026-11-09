@@ -1,0 +1,7 @@
+// En routes/web.php, antes de fallback. Requiere sesión, CSRF de web y firma validada en controlador. NO usar signed.
+Route::middleware(['auth', 'throttle:20,1'])->group(function () {
+    Route::get('mcp/certificaciones/{id}/subir', [\App\Http\Controllers\Mcp\McpCertificacionesArchivosController::class, 'formulario'])->whereNumber('id')->name('mcp.certificaciones.subir');
+    Route::post('mcp/certificaciones/{id}/subir', [\App\Http\Controllers\Mcp\McpCertificacionesArchivosController::class, 'guardar'])->whereNumber('id');
+    Route::get('mcp/certificaciones/{id}/archivos/{archivoId}', [\App\Http\Controllers\Mcp\McpCertificacionesArchivosController::class, 'abrirArchivo'])->whereNumber('id')->whereNumber('archivoId')->name('mcp.certificaciones.archivo');
+    Route::get('mcp/certificaciones/{id}/solicitud.pdf', [\App\Http\Controllers\Mcp\McpCertificacionesPdfController::class, 'abrirPdf'])->whereNumber('id')->name('mcp.certificaciones.solicitud_pdf');
+});

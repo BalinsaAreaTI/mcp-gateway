@@ -1,0 +1,109 @@
+Actualizaci?n v1.14.0 ? Certificaciones: herramientas de lectura
+==============================================================
+Se suma a v1.13.0. Gateway implementado localmente. Sistema entregado para instalar;
+NO se han modificado archivos en D:/Sistema_Balinsa_23_10 ni desplegado producci?n.
+
+HERRAMIENTAS
+- certificaciones_buscar_solicitudes: cliente, cliente_id, desde, hasta,
+  estado_archivos (Pendiente/Recibido), pagina, limite. Sin rango por defecto.
+- certificaciones_buscar_certificados: mismos filtros; ?ltimos dos meses por defecto.
+- certificaciones_ver_solicitud: id. Ficha, contacto y conteos esperados/pendientes.
+- certificaciones_ver_instrumentos_solicitud: id, instrumento_id, pagina, limite.
+- certificaciones_ver_archivos_certificado: id, instrumento_id, pagina, limite.
+- certificaciones_buscar_por_vencer: cliente, dias (7/15/30), modo
+  (por_vencer/caducados), pagina, limite. Incluye dias_restantes.
+- certificaciones_filtros: sin par?metros.
+- certificaciones_catalogos: catalogo (obligatorio), tipo, pagina, limite.
+  Cat?logos: marcas, modelos, escalas, capacidad_escala, procedencias_balanza,
+  procedencias_termometro, valores_nominales, clases_exactitud, elementos_sensor.
+Listas: m?ximo 20, por defecto 10. Fechas de entrada AAAA-MM-DD.
+id es idCertificado, NO id de instrumento, archivo, pendiente ni reporte.
+
+REGLAS Y ORIGEN
+- SolicitudCertificacionController@index/vistaCertificados y ruta por-caducar:
+  bloquean Servicio Tecnico y Area de Almacen. Se aplica en servidor y prevalece
+  incluso en multirrol con Gerencia; excepci?n al texto gen?rico de acceso total.
+- Lista expl?cita conservadora: Administracion, Gerencia, Area de TI,
+  Asesor de Ventas, Jefe de Ventas y Operaciones; m?s roles_acceso_total.
+  Roles desconocidos denegados; ampliar solo tras verificar acceso de pantalla.
+- consultarSolicitudes/consultarSolicitudesConEstado no restringen por asesor:
+  TODOS los autorizados consultan todos los activos (estado_soli = 1).
+  Por ello no se inventa un filtro de propiedad para asesores.
+- Inactivos/inexistentes: 404. Sin acceso al m?dulo: 403. Datos inv?lidos: 422.
+- Certificados filtra created_at; detalle normaliza fechas ISO y dd/mm/AAAA.
+- PorVencer.vue: padre con archivos, ninguna renovaci?n con archivos.
+  Se conserva el criterio del controlador que incluye hijos inactivos al evaluar
+  renovaciones. Pr?ximos incluye hoy y hasta 7/15/30 d?as. Caducados: de ayer
+  hasta hace 7 d?as, sin incluir hoy. Fechas nulas quedan fuera.
+- Zona horaria fija America/Lima (el frontend usa hora del navegador; MCP hace
+  expl?cita la zona del negocio). Por defecto pr?ximos 30 d?as.
+- Slots como computeTotalSlots: cantidad de series JSON cuando existen, en otro
+  caso cantidad positiva o 1. Pendientes = max(slots - archivos, 0).
+  El conteo no verifica cobertura de cada serie ni existencia f?sica del PDF.
+- Recibido significa al menos un archivo; no equivale a expediente completo.
+- Textos limitados a 1000 caracteres; textos_recortados avisa en listas.
+  series_json y puntos_calibracion_json conservan el contenido guardado; si se
+  recortan no deben interpretarse como JSON completo. Consultar sistema original.
+- Los cat?logos no comparten necesariamente c?digos de tipo (comentarios del
+  controlador discrepan). Se conservan c?digos almacenados sin reinterpretarlos.
+  Cach? de cat?logos: 600 segundos, clave mcp.certificaciones.catalogos.v1.
+- Auditor?a de ?xitos en laravel.log, y llamadas/errores en agent_actions mediante
+  el trait existente del gateway. No se incluyen rutas internas de archivos.
+
+ALCANCE PDF
+Se consult? la gu?a PDF. Esta entrega no genera certificados oficiales, no sirve
+binarios/base64 ni crea enlaces. La subida por enlace temporal, creaci?n y
+renovaci?n de solicitudes quedan para la siguiente etapa de escritura.
+No se reutilizan los endpoints web de archivos, que no aplican aqu? las nuevas
+comprobaciones MCP. No cambia controladores ni componentes de las pantallas.
+
+INSTALACI?N ? PRIMERO SISTEMA (Laravel 10)
+1. Copiar sistema/app/Http/Controllers/Mcp/McpCertificacionesController.php.
+2. Agregar sistema/config/mcp-certificaciones-BLOQUE.txt dentro del return de
+   config/mcp.php, sin borrar claves existentes.
+3. Agregar sistema/routes/api-certificaciones-BLOQUE.txt dentro del grupo mcp
+   existente en routes/api.php con auth:sanctum, abilities:mcp, throttle:60,1.
+   Todas las rutas son GET bajo api/mcp/certificaciones; IDs con whereNumber.
+4. php artisan config:clear
+   php artisan optimize:clear
+   php artisan route:list --path=mcp/certificaciones
+5. Verificar esquema usado por el controlador de pantalla: tb_certificado,
+   tb_instrumento, tb_certificado_archivo, clientes y tablas de cat?logos.
+   Requiere parent_solicitud_id y estado_soli ya usados por la pantalla actual.
+   No necesita migraciones ni dependencias nuevas.
+
+INSTALACI?N ? GATEWAY (Laravel 12)
+1. Copiar gateway/app/Mcp/Tools/Certificaciones*Tool.php.
+2. Aplicar gateway/app/Mcp/Servers/BalinsaServer-BLOQUE.txt, conservar herramientas
+   previas, establecer versi?n 1.14.0 y a?adir instrucciones de certificaciones.
+   Se incluye BalinsaServer.php completo de esta revisi?n como referencia;
+   si tu servidor contiene cambios posteriores, integrar el bloque.
+3. composer2 dump-autoload -o --no-scripts
+   php artisan optimize:clear
+4. Recrear el conector en Claude/ChatGPT para actualizar el cat?logo.
+
+VALIDACI?N LOCAL
+- 9 pruebas y 129 aserciones aprobadas: permisos en los 8 endpoints, multirrol,
+  Gerencia, listas paginadas, inactivos, pertenencia de instrumentos, metadatos,
+  l?mites temporales y renovaciones, validaci?n, cat?logos, recorte, filtros
+  permitidos por gateway y registro/esquemas de las 8 herramientas.
+- Sintaxis PHP comprobada; formato Pint en los archivos nuevos.
+- Ejecutar desde D:/mcp-gateway:
+  php -d extension=pdo_sqlite vendor/phpunit/phpunit/phpunit --filter=Certificaciones
+  La extensi?n PDO SQLite del PHP CLI no est? activada por defecto: se habilit?
+  solo para el proceso de pruebas, sin cambiar configuraci?n de PHP.
+- Las pruebas usan SQLite en memoria y emulan DATE_FORMAT/STR_TO_DATE de MySQL.
+  No se ejecutaron contra datos reales ni validan equivalencia de esas funciones
+  en fechas inv?lidas. No se prob? Laravel 10, middleware/rutas desplegadas,
+  tokens reales, auditor?a de punta a punta ni conectores Claude/ChatGPT.
+
+PRUEBAS DESPU?S DE INSTALAR
+- Token mcp de Asesor/Gerencia: GET /api/mcp/certificaciones/solicitudes?limite=2.
+- Servicio Tecnico, Area de Almacen o rol desconocido: 403 en los 8 endpoints.
+- Solicitud inactiva: 404 en detalle, instrumentos y archivos.
+- Comparar pantalla PorVencer con hoy, +30, +31, -7, -8 d?as y renovaciones con PDF.
+- Consultar archivos de una solicitud: no debe aparecer ruta, token ni URL.
+- Comparar conteos con pantalla Certificados usando varias series por instrumento.
+- Revisar agent_actions y laravel.log; revocar token de prueba al finalizar.
+- Frases: ?Busca solicitudes del cliente X?, ?Qu? certificados faltan?,
+  ?Mu?strame certificados por vencer en 15 d?as?, ?Lista las marcas disponibles?.

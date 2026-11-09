@@ -1,0 +1,19 @@
+// Dentro del grupo mcp existente (auth:sanctum, abilities:mcp, throttle:60,1).
+Route::get('certificaciones/solicitudes', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'buscar']);
+Route::get('certificaciones/certificados', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'certificados']);
+Route::get('certificaciones/por-vencer', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'porVencer']);
+Route::get('certificaciones/filtros', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'filtros']);
+Route::get('certificaciones/catalogos', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'catalogos']);
+Route::get('certificaciones/solicitudes/{id}', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'ver'])->whereNumber('id');
+Route::get('certificaciones/solicitudes/{id}/instrumentos', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'instrumentos'])->whereNumber('id');
+Route::get('certificaciones/solicitudes/{id}/archivos', [\App\Http\Controllers\Mcp\McpCertificacionesController::class, 'archivos'])->whereNumber('id');
+Route::post('certificaciones/solicitudes', [\App\Http\Controllers\Mcp\McpCertificacionesEscrituraController::class, 'registrar'])->middleware('throttle:10,1');
+Route::post('certificaciones/solicitudes/{id}/fechas', [\App\Http\Controllers\Mcp\McpCertificacionesEscrituraController::class, 'editarFechas'])->whereNumber('id')->middleware('throttle:20,1');
+Route::post('certificaciones/solicitudes/{id}/renovar', [\App\Http\Controllers\Mcp\McpCertificacionesEscrituraController::class, 'renovar'])->whereNumber('id')->middleware('throttle:10,1');
+Route::post('certificaciones/solicitudes/{id}/eliminar', [\App\Http\Controllers\Mcp\McpCertificacionesEscrituraController::class, 'eliminar'])->whereNumber('id')->middleware('throttle:10,1');
+Route::get('certificaciones/clientes/{id}/contactos', [\App\Http\Controllers\Mcp\McpCertificacionesEscrituraController::class, 'contactos'])->whereNumber('id')->middleware('throttle:60,1');
+Route::post('certificaciones/clientes/{id}/contactos', [\App\Http\Controllers\Mcp\McpCertificacionesEscrituraController::class, 'registrarContacto'])->whereNumber('id')->middleware('throttle:10,1');
+Route::post('certificaciones/catalogos', [\App\Http\Controllers\Mcp\McpCertificacionesEscrituraController::class, 'agregarCatalogo'])->middleware('throttle:10,1');
+Route::post('certificaciones/solicitudes/{id}/subida', [\App\Http\Controllers\Mcp\McpCertificacionesArchivosController::class, 'preparar'])->whereNumber('id')->middleware('throttle:10,1');
+Route::get('certificaciones/solicitudes/{id}/archivos/{archivoId}/enlace', [\App\Http\Controllers\Mcp\McpCertificacionesArchivosController::class, 'enlaceArchivo'])->whereNumber('id')->whereNumber('archivoId')->middleware('throttle:20,1');
+Route::get('certificaciones/solicitudes/{id}/pdf', [\App\Http\Controllers\Mcp\McpCertificacionesPdfController::class, 'prepararPdf'])->whereNumber('id')->middleware('throttle:20,1');

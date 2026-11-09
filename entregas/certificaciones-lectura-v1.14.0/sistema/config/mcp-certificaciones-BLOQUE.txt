@@ -1,0 +1,5 @@
+// Agregar dentro del return de config/mcp.php. No reemplazar otras claves.
+// Lista expl?cita m?s restrictiva que la pantalla (que permite cualquier rol no bloqueado).
+'certificaciones_roles' => ['Administracion', 'Gerencia', 'Area de TI', 'Asesor de Ventas', 'Jefe de Ventas', 'Operaciones'],
+// El bloqueo de la pantalla prevalece incluso con m?ltiples roles.
+'certificaciones_roles_bloqueados' => ['Servicio Tecnico', 'Area de Almacen'],

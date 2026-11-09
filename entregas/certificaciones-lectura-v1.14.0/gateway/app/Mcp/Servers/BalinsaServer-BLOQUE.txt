@@ -1,0 +1,11 @@
+// Version 1.14.0. Agregar a $tools:
+\App\Mcp\Tools\CertificacionesBuscarSolicitudesTool::class,
+\App\Mcp\Tools\CertificacionesBuscarCertificadosTool::class,
+\App\Mcp\Tools\CertificacionesVerSolicitudTool::class,
+\App\Mcp\Tools\CertificacionesVerInstrumentosSolicitudTool::class,
+\App\Mcp\Tools\CertificacionesVerArchivosCertificadoTool::class,
+\App\Mcp\Tools\CertificacionesBuscarPorVencerTool::class,
+\App\Mcp\Tools\CertificacionesFiltrosTool::class,
+\App\Mcp\Tools\CertificacionesCatalogosTool::class,
+
+// Agregar a instructions: certificaciones solo lectura; Recibido no significa cobertura completa.
