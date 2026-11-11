@@ -1,0 +1,3 @@
+// Agregar dentro del array de config/mcp.php
+'actas_roles' => ['Gerencia', 'Administracion', 'Area de TI', 'Operaciones', 'Servicio Tecnico'],
+'actas_roles_carga' => ['Gerencia', 'Administracion', 'Area de TI', 'Operaciones', 'Servicio Tecnico'],

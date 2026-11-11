@@ -1,0 +1,13 @@
+Agregar imports:
+use App\Mcp\Tools\OperacionesBuscarActasConformidadTool;
+use App\Mcp\Tools\OperacionesVerActaConformidadTool;
+use App\Mcp\Tools\OperacionesGenerarPdfActaConformidadTool;
+use App\Mcp\Tools\OperacionesPrepararCargaActaFirmadaTool;
+use App\Mcp\Tools\OperacionesVerArchivoActaFirmadaTool;
+Agregar a $tools:
+OperacionesBuscarActasConformidadTool::class,
+OperacionesVerActaConformidadTool::class,
+OperacionesGenerarPdfActaConformidadTool::class,
+OperacionesPrepararCargaActaFirmadaTool::class,
+OperacionesVerArchivoActaFirmadaTool::class,
+Actualizar $version a 1.19.0. Añadir a instrucciones: actas usan tarea_id como hoja de salida; PDF para firma manual y archivo firmado son distintos; enlaces requieren sesión del mismo usuario y vencen en 10 minutos.

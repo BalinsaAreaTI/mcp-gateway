@@ -1,0 +1,1 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acta guardada</title></head><body><main><h1>Acta N° {{ $id }} guardada</h1><p>El archivo se guardó y el acta quedó marcada como firmada. Puedes cerrar esta ventana y consultar el acta desde el asistente.</p></main></body></html>
