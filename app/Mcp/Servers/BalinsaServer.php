@@ -130,6 +130,9 @@ use App\Mcp\Tools\VentasRegistrarClienteTool;
 use App\Mcp\Tools\VentasBuscarInformesCotizablesTool;
 use App\Mcp\Tools\VentasVerInformeCotizableTool;
 use App\Mcp\Tools\VentasRegistrarCotizacionServicioDesdeInformeTool;
+use App\Mcp\Tools\VentasBuscarInformesCotizablesTool;
+use App\Mcp\Tools\VentasVerInformeCotizableTool;
+use App\Mcp\Tools\VentasRegistrarCotizacionServicioDesdeInformeTool;
 use App\Mcp\Tools\VentasRegistrarCotizacionServicioTool;
 use App\Mcp\Tools\VentasRegistrarCotizacionVentaTool;
 use App\Mcp\Tools\VentasRegistrarPendienteTool;
@@ -226,6 +229,9 @@ actas usan tarea_id como hoja de salida; PDF para firma manual y archivo firmado
             // Cotización por servicio
         VentasBuscarCotizacionesServicioTool::class,
         VentasVerCotizacionServicioTool::class,
+        VentasBuscarInformesCotizablesTool::class,
+        VentasVerInformeCotizableTool::class,
+        VentasRegistrarCotizacionServicioDesdeInformeTool::class,
         VentasBuscarInformesCotizablesTool::class,
         VentasVerInformeCotizableTool::class,
         VentasRegistrarCotizacionServicioDesdeInformeTool::class,
@@ -346,6 +352,8 @@ actas usan tarea_id como hoja de salida; PDF para firma manual y archivo firmado
         ComunicacionesImprimirDocumentoTool::class,
         ComunicacionesConsultarEstadoImpresionTool::class,
         ComunicacionesImpresorasDisponiblesTool::class,
+        ComunicacionesMisOperacionesTool::class,
+        ComunicacionesPrepararCorreoMultipleTool::class,
         ComunicacionesMisOperacionesTool::class,
         ComunicacionesPrepararCorreoMultipleTool::class,
 
