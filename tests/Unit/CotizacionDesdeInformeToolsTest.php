@@ -22,7 +22,7 @@ class CotizacionDesdeInformeToolsTest extends TestCase
         };
         $tool->handle(new Request([
             'reporte_id' => 9, 'cliente_id' => 999, 'id_asesor' => 99, 'total' => 1,
-            'instrumentos' => [['id' => 21, 'precio' => 0, 'trabajos' => '', 'marca' => 'Falsa']],
+            'instrumentos' => [['id' => 21, 'precio' => 0, 'trabajos' => 'Revisión confirmada', 'marca' => 'Falsa']],
         ]));
         [$route, $body] = $tool->payload;
         $this->assertSame('ventas/cotizaciones/servicio/desde-informe', $route);
@@ -30,6 +30,6 @@ class CotizacionDesdeInformeToolsTest extends TestCase
         $this->assertArrayNotHasKey('cliente_id', $body);
         $this->assertArrayNotHasKey('id_asesor', $body);
         $this->assertArrayNotHasKey('total', $body);
-        $this->assertSame([['id' => 21, 'precio' => 0, 'trabajos' => '']], $body['instrumentos']);
+        $this->assertSame([['id' => 21, 'precio' => 0, 'trabajos' => 'Revisión confirmada']], $body['instrumentos']);
     }
 }
