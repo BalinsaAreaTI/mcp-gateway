@@ -19,7 +19,7 @@ class DetalleReportesTest extends TestCase
     {
         parent::setUp();
         if (! class_exists(McpHistorialReportesController::class)) {
-            require_once base_path('entregas/actualizacion-historial-reportes-v1.12.0/sistema/app/Http/Controllers/Mcp/McpHistorialReportesController.php');
+            require_once (getenv('MCP_CENTRAL_PATH') ?: dirname(base_path()).'/Sistema_Balinsa_23_10').'/app/Http/Controllers/Mcp/McpHistorialReportesController.php';
         }
         config(['logging.default'=>'historial_test', 'logging.channels.historial_test'=>[
             'driver'=>'monolog', 'handler'=>\Monolog\Handler\NullHandler::class],
@@ -70,9 +70,12 @@ class DetalleReportesTest extends TestCase
         DB::table('diagnosticos')->insert(['id'=>31,'reporte_instrumento_id'=>21,'fallas_detectadas'=>'Falla','secreto'=>'NO MOSTRAR']);
         DB::table('informes_finales')->insert(['id'=>41,'reporte_instrumento_id'=>21,'trabajos_realizados'=>'Reparado']);
         $this->controller = new McpHistorialReportesController;
-        $stage=is_dir(base_path('entregas/actualizacion-detalle-reportes-v1.13.0/sistema'))
-            ? base_path('entregas/actualizacion-detalle-reportes-v1.13.0/sistema') : base_path();
+        $stage=getenv('MCP_CENTRAL_PATH') ?: dirname(base_path()).'/Sistema_Balinsa_23_10';
+        if (!is_file($stage.'/app/Services/ReporteAccionesMcpService.php')) {
+            $this->markTestSkipped('Define MCP_CENTRAL_PATH para probar el sistema central actual.');
+        }
         foreach(['app/Services/ReporteAccionesMcpService.php','app/Services/ReporteTecnicoDatosPdf.php','app/Services/ReporteTecnicoPdfService.php',
+            'app/Services/InstrumentosServicioService.php','app/Models/ReporteInstrumento.php','app/Models/InstrumentoTarea.php',
             'app/Http/Controllers/Mcp/McpDetalleReportesController.php','app/Http/Controllers/Mcp/McpReporteTecnicoPdfController.php'] as $file) { require_once $stage.'/'.$file; }
         config(['mcp.detalle_reportes_roles_edicion'=>['Servicio Tecnico','Operaciones','Administracion'],
             'mcp.detalle_reportes_roles_supervisor'=>['Operaciones','Administracion'],
@@ -88,7 +91,9 @@ class DetalleReportesTest extends TestCase
             });
         }
         Schema::create('tb_instrumento_tarea',function(Blueprint $t){$t->id();$t->integer('tarea_id');
-            foreach(['tipo_instrumento','marca','modelo','serie'] as $c){$t->string($c)->nullable();}});
+            foreach(\App\Services\InstrumentosServicioService::CAMPOS as $c){$t->string($c)->nullable();}
+            $t->boolean('agregado_en_campo')->default(false);$t->timestamps();});
+        Schema::table('reportes_instrumentos',function(Blueprint $t){$t->string('puntos_calibracion')->nullable();});
         DB::table('reportes')->where('id',101)->update(['estado_global'=>'abierto','created_at'=>'2026-10-29 10:00:00']);
         DB::table('reportes_instrumentos')->where('id',21)->update(['tipo_instrumento'=>'Balanza','tipo_servicio'=>'Mantenimiento','orden_pdf'=>1]);
         DB::table('diagnosticos')->where('id',31)->update(['tecnico_id'=>10,'tecnico_responsable'=>'Técnico Uno','estado_diagnostico'=>'pendiente','foto1'=>'original.jpg']);
@@ -107,6 +112,25 @@ class DetalleReportesTest extends TestCase
         $r=Request::create('/','POST',$d);$r->setUserResolver(fn()=>$u);return $r;
     }
     private function service(){return new \App\Services\ReporteAccionesMcpService;}
+
+    public function test_consultas_comparten_base_y_version_detecta_edicion_de_hoja(): void
+    {
+        DB::table('tb_instrumento_tarea')->insert(['id'=>51,'tarea_id'=>11,'tipo_instrumento'=>'Balanza','marca'=>'Base','agregado_en_campo'=>1]);
+        DB::table('reportes_instrumentos')->where('id',21)->update(['instrumento_tarea_id'=>51,'marca'=>'Antigua']);
+        $p=$this->payload(['marca'=>'Cambio']);
+        DB::table('tb_instrumento_tarea')->where('id',51)->update(['marca'=>'Actual']);
+        $out=$this->ctl()->acciones($this->req(['instrumento_id'=>21]),101,$this->service())->getData(true);
+        $this->assertSame('Actual',$out['datos_instrumento']['marca']);
+        $this->assertSame(51,$out['instrumento_tarea_id']);$this->assertTrue($out['agregado_en_campo']);
+        $hist=$this->controller->instrumentos($this->req(['instrumento_id'=>21]),101)->getData(true);
+        $this->assertSame('Actual',$hist['data'][0]['instrumento']['marca']);
+        try { $this->ctl()->instrumento($this->req($p),101,21,$this->service()); $this->fail(); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('version_actual',$e->errors()); }
+        $p['version_actual']=$out['version_actual'];
+        $this->ctl()->instrumento($this->req($p),101,21,$this->service());
+        $this->assertSame('Cambio',DB::table('tb_instrumento_tarea')->where('id',51)->value('marca'));
+        $this->assertSame('Cambio',DB::table('reportes_instrumentos')->where('id',21)->value('marca'));
+    }
     private function ctl(){return new \App\Http\Controllers\Mcp\McpDetalleReportesController;}
     private function payload(array $changes=[],string $rol='Servicio Tecnico'): array
     {
@@ -115,10 +139,13 @@ class DetalleReportesTest extends TestCase
     }
     public function test_edicion_propia_conserva_autoria_fotos_y_omitidos(): void
     {
-        $p=$this->payload(['trabajos_sugeridos'=>'Revisar fuente']);
+        DB::table('diagnosticos')->where('id',31)->update(['trabajos_sugeridos'=>'Histórico','repuestos_sugeridos'=>'Original']);
+        $p=$this->payload(['fallas_detectadas'=>'Informe actualizado']);
         $this->ctl()->informe($this->req($p),101,21,$this->service());
         $d=DB::table('diagnosticos')->where('id',31)->first();
-        $this->assertSame('Falla',$d->fallas_detectadas);$this->assertSame('original.jpg',$d->foto1);
+        $this->assertSame('Informe actualizado',$d->fallas_detectadas);$this->assertSame('original.jpg',$d->foto1);
+        $this->assertSame('Histórico',$d->trabajos_sugeridos);
+        $this->assertSame('Original',$d->repuestos_sugeridos);
         $this->assertSame('Técnico Uno',$d->tecnico_responsable);
         $this->expectException(ValidationException::class);
         $this->ctl()->informe($this->req($p),101,21,$this->service());
@@ -133,16 +160,33 @@ class DetalleReportesTest extends TestCase
         $this->expectException(ValidationException::class);
         $this->ctl()->informe($this->req($this->payload(['fallas_detectadas'=>'No'],'Gerencia'),'Gerencia'),101,21,$this->service());
     }
+    public function test_informe_rechaza_campos_retirados_y_textos_vacios(): void
+    {
+        foreach ([['fallas_detectadas'=>''], ['fallas_detectadas'=>'   '], ['fallas_detectadas'=>null], ['trabajos_sugeridos'=>'No'], ['repuestos_sugeridos'=>'No']] as $c) {
+            try { $this->ctl()->informe($this->req($this->payload($c)),101,21,$this->service()); $this->fail('Debió rechazar los cambios'); }
+            catch (ValidationException $e) { $this->assertNotEmpty($e->errors()); }
+        }
+        $this->assertSame('Falla', DB::table('diagnosticos')->where('id',31)->value('fallas_detectadas'));
+        $out=$this->ctl()->acciones($this->req(['instrumento_id'=>21]),101,$this->service())->getData(true);
+        $this->assertSame(['fallas_detectadas'=>'Falla'], $out['informe']);
+        $this->assertSame(['trabajos_realizados'=>'Reparado'], $out['resultado']);
+    }
     public function test_resultado_obligatorio_campos_no_permitidos_y_confirmacion(): void
     {
-        foreach([['trabajos_realizados'=>'   '],['foto3'=>'nuevo.jpg'],['tecnico_id'=>999]] as $c){
+        foreach([['trabajos_realizados'=>'   '],['trabajos_realizados'=>null],['observaciones_finales'=>'No'],['n_cotizacion'=>'No'],['repuestos_instalados'=>'No'],['foto3'=>'nuevo.jpg'],['tecnico_id'=>999]] as $c){
             try{$this->ctl()->resultado($this->req($this->payload($c)),101,21,$this->service());$this->fail();}
             catch(ValidationException $e){$this->assertNotEmpty($e->errors());}
         }
-        $p=$this->payload(['observaciones_finales'=>'Comprobado']);$p['confirmado']=false;
+        $p=$this->payload(['trabajos_realizados'=>'Comprobado']);$p['confirmado']=false;
         try{$this->ctl()->resultado($this->req($p),101,21,$this->service());$this->fail();}
         catch(ValidationException $e){$this->assertNotEmpty($e->errors());}
-        $this->ctl()->resultado($this->req($this->payload(['observaciones_finales'=>'Comprobado'])),101,21,$this->service());
+        DB::table('informes_finales')->where('id',41)->update(['observaciones_finales'=>'Histórico','n_cotizacion'=>'COT-001','repuestos_instalados'=>'Original']);
+        $this->ctl()->resultado($this->req($this->payload(['trabajos_realizados'=>'Comprobado'])),101,21,$this->service());
+        $d=DB::table('informes_finales')->where('id',41)->first();
+        $this->assertSame('Comprobado',$d->trabajos_realizados);
+        $this->assertSame('Histórico',$d->observaciones_finales);
+        $this->assertSame('COT-001',$d->n_cotizacion);
+        $this->assertSame('Original',$d->repuestos_instalados);
         $this->assertSame('cert.jpg',DB::table('informes_finales')->where('id',41)->value('foto3'));
     }
     public function test_ficha_tiene_permiso_distinto_y_detecta_vinculo_ambiguo(): void
@@ -155,7 +199,7 @@ class DetalleReportesTest extends TestCase
         DB::table('tb_instrumento_tarea')->where('id',52)->delete();
         $this->ctl()->instrumento($this->req($this->payload(['marca'=>'X'])),101,21,$this->service());
         $this->assertSame(51,DB::table('reportes_instrumentos')->where('id',21)->value('instrumento_tarea_id'));
-        $this->assertNull(DB::table('tb_instrumento_tarea')->where('id',51)->value('marca'));
+        $this->assertSame('X',DB::table('tb_instrumento_tarea')->where('id',51)->value('marca'));
     }
     public function test_cierre_exige_resultados_y_completa_tarea_no_pendiente(): void
     {

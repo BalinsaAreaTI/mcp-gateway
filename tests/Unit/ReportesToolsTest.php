@@ -22,6 +22,9 @@ class ReportesToolsTest extends TestCase
             $this->assertArrayNotHasKey('fecha', $schema);
             $this->assertArrayHasKey('confirmado', $schema);
             $this->assertArrayHasKey('version_actual', $schema);
+            foreach (['trabajos_sugeridos', 'observaciones_finales', 'n_cotizacion'] as $removed) {
+                $this->assertArrayNotHasKey($removed, $schema);
+            }
         }
         $s = (new \App\Mcp\Tools\ServicioTecnicoVerReporteTool)->schema($f);
         $this->assertSame(20, $s['limite']->toArray()['maximum']);
@@ -43,6 +46,8 @@ class ReportesToolsTest extends TestCase
         $this->assertSame($extra,$tool->sent[1]['instrumento_extra']);
         $this->assertArrayNotHasKey('tecnico_id',$tool->sent[1]);
         $this->assertArrayNotHasKey('estado_informe',$tool->sent[1]);
+        $this->assertArrayNotHasKey('observaciones_finales',$tool->sent[1]);
+        $this->assertArrayNotHasKey('n_cotizacion',$tool->sent[1]);
     }
 
     public function test_extra_rechaza_claves_no_permitidas_antes_del_http(): void
@@ -81,6 +86,7 @@ class ReportesToolsTest extends TestCase
         $this->assertSame('servicio_tecnico_registrar_informe', $tool->name());
         $this->assertSame('servicio-tecnico/reportes/7/diagnosticos', $tool->sent[0]);
         $this->assertSame('No enciende', $tool->sent[1]['fallas_detectadas']);
+        $this->assertArrayNotHasKey('trabajos_sugeridos', $tool->sent[1]);
         $buscar = new class extends \App\Mcp\Tools\ServicioTecnicoBuscarReportesTool {
             public array $sent = [];
             protected function consultar(Request $r, string $ruta, array $query = []): Response

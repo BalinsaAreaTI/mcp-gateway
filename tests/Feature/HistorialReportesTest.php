@@ -19,8 +19,11 @@ class HistorialReportesTest extends TestCase
     {
         parent::setUp();
         if (! class_exists(McpHistorialReportesController::class)) {
-            require_once base_path('entregas/actualizacion-historial-reportes-v1.12.0/sistema/app/Http/Controllers/Mcp/McpHistorialReportesController.php');
+            require_once (getenv('MCP_CENTRAL_PATH') ?: dirname(base_path()).'/Sistema_Balinsa_23_10').'/app/Http/Controllers/Mcp/McpHistorialReportesController.php';
         }
+        $central=getenv('MCP_CENTRAL_PATH') ?: dirname(base_path()).'/Sistema_Balinsa_23_10';
+        require_once $central.'/app/Services/InstrumentosServicioService.php';
+        require_once $central.'/app/Models/InstrumentoTarea.php';
         config(['logging.default'=>'historial_test', 'logging.channels.historial_test'=>[
             'driver'=>'monolog', 'handler'=>\Monolog\Handler\NullHandler::class],
             'database.default'=>'historial_test', 'database.connections.historial_test'=>[
@@ -47,6 +50,7 @@ class HistorialReportesTest extends TestCase
         });
         Schema::create('reportes_instrumentos', function (Blueprint $t) {
             $t->id(); $t->integer('reporte_id'); $t->integer('orden_pdf')->nullable();
+            $t->integer('instrumento_tarea_id')->nullable();
             foreach (['tipo_instrumento','tipo_servicio','marca','modelo','serie','codigo_int','capacidad_rango',
                 'resolucion_division','clase_tipo_metrologico','material'] as $c) { $t->string($c)->nullable(); }
         });

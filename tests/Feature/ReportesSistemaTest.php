@@ -26,10 +26,10 @@ class ReportesSistemaTest extends TestCase
         }
         foreach (['Models/Reporte', 'Models/ReporteInstrumento', 'Models/InstrumentoTarea',
             'Models/TareasTecnicos', 'Models/Diagnostico', 'Models/InformeFinal',
-            'Services/ReporteInstrumentoService', 'Services/ReporteNumeracionService'] as $file) {
+            'Services/ReporteInstrumentoService', 'Services/ReporteNumeracionService', 'Services/InstrumentosServicioService'] as $file) {
             require_once $central.'/app/'.$file.'.php';
         }
-        require_once base_path('entregas/actualizacion-reportes-v1.11.0/sistema/app/Http/Controllers/Mcp/McpReportesController.php');
+        require_once $central.'/app/Http/Controllers/Mcp/McpReportesController.php';
         config(['database.default' => 'reportes_test', 'database.connections.reportes_test' => [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => true],
             'mcp.roles_acceso_total' => ['Gerencia', 'Area de TI'],
@@ -46,6 +46,7 @@ class ReportesSistemaTest extends TestCase
         foreach (['tb_instrumento_tarea', 'reportes_instrumentos'] as $tabla) {
             Schema::create($tabla, function (Blueprint $t) {
                 $t->id(); foreach (['tarea_id','pendiente_id','reporte_id','instrumento_tarea_id','tb_instrumento_pendiente_id','orden_pdf'] as $c) { $t->integer($c)->nullable(); }
+                $t->boolean('agregado_en_campo')->default(false);
                 foreach (['tipo_instrumento','tipo_servicio','marca','modelo','serie','codigo_int','capacidad_rango','resolucion_division','clase_tipo_metrologico','material','puntos_calibracion'] as $c) { $t->string($c)->nullable(); }
                 $t->timestamps();
             });
@@ -97,6 +98,72 @@ class ReportesSistemaTest extends TestCase
         catch (HttpException $e) { $this->assertSame(403, $e->getStatusCode()); }
     }
 
+    public function test_caracteristicas_sin_reporte_y_fase_resultado(): void
+    {
+        $p=['instrumento_tarea_id'=>1,'confirmado'=>true,'version_actual'=>$this->version(),'cambios'=>['marca'=>'Nueva']];
+        $this->controller->caracteristicas($this->req($p),1);
+        $this->assertSame(0,DB::table('reportes')->count());
+        $this->assertSame('Nueva',DB::table('tb_instrumento_tarea')->where('id',1)->value('marca'));
+        $this->controller->diagnostico($this->req($this->payload()),1);
+        $view=$this->controller->ver($this->req(['fase'=>'resultado']),1)->getData(true);
+        $this->assertContains('editar_caracteristicas',$view['data'][0]['acciones_permitidas']);
+        $p['version_actual']=$view['version_actual'];$p['fase']='resultado';$p['cambios']=['marca'=>'Con diagnóstico'];
+        $this->controller->caracteristicas($this->req($p),1);
+        $this->assertSame('Con diagnóstico',DB::table('reportes_instrumentos')->value('marca'));
+        $this->assertSame('Con diagnóstico',DB::table('tb_instrumento_tarea')->where('id',1)->value('marca'));
+        $this->assertSame('No enciende',DB::table('diagnosticos')->value('fallas_detectadas'));
+    }
+
+    public function test_cambio_en_tarea_invalida_version_y_actualiza_lectura_y_registro(): void
+    {
+        app(\App\Services\ReporteInstrumentoService::class)->obtenerOCrearReporte(1);
+        $p=$this->payload();
+        DB::table('tb_instrumento_tarea')->where('id',1)->update(['marca'=>'Desde hoja']);
+        try { $this->controller->diagnostico($this->req($p),1); $this->fail('Debe detectar la edición de la tarea'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('version_actual',$e->errors()); }
+        $view=$this->controller->ver($this->req(),1)->getData(true);
+        $this->assertSame('Desde hoja',$view['data'][0]['caracteristicas']['marca']);
+        $p['version_actual']=$view['version_actual'];
+        $this->controller->diagnostico($this->req($p),1);
+        $this->assertSame('Desde hoja',DB::table('reportes_instrumentos')->value('marca'));
+    }
+
+    public function test_extra_sin_reporte_edicion_registro_y_extra_con_reporte(): void
+    {
+        $p=['confirmado'=>true,'version_actual'=>$this->version(),'instrumento_extra'=>[
+            'tipo_instrumento'=>'Termómetro','tipo_servicio'=>'Mantenimiento','serie'=>'EX-1']];
+        $r=$this->controller->extra($this->req($p),1)->getData(true);
+        $this->assertNull($r['reporte_id']);$this->assertNull($r['reporte_instrumento_id']);
+        $this->assertSame(0,DB::table('reportes')->count());
+        $this->assertSame(1,DB::table('tb_instrumento_tarea')->where('agregado_en_campo',1)->count());
+        try { $this->controller->extra($this->req($p),1); $this->fail('No debe duplicar el reenvío'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('version_actual',$e->errors()); }
+        $this->controller->caracteristicas($this->req(['confirmado'=>true,'version_actual'=>$this->version(),
+            'instrumento_tarea_id'=>$r['instrumento_tarea_id'],'cambios'=>['marca'=>'Extra corregido']]),1);
+        $this->controller->resultado($this->req(['confirmado'=>true,'version_actual'=>$this->version(),
+            'instrumento_tarea_id'=>$r['instrumento_tarea_id'],'trabajos_realizados'=>'Comprobado']),1);
+        $this->assertSame(1,DB::table('tb_instrumento_tarea')->where('agregado_en_campo',1)->count());
+        $p['version_actual']=$this->version();$p['instrumento_extra']['serie']='EX-2';
+        $r2=$this->controller->extra($this->req($p),1)->getData(true);
+        $this->assertNotNull($r2['reporte_instrumento_id']);
+        $this->assertSame($r2['instrumento_tarea_id'],DB::table('reportes_instrumentos')->where('id',$r2['reporte_instrumento_id'])->value('instrumento_tarea_id'));
+        $this->assertSame(1,DB::table('informes_finales')->count());$this->assertSame(0,DB::table('diagnosticos')->count());
+        $this->assertSame(2,DB::table('tb_instrumento_tarea')->where('agregado_en_campo',1)->count());
+    }
+
+    public function test_extra_rechaza_datos_incompletos_y_hoja_cerrada(): void
+    {
+        foreach ([['tipo_instrumento'=>'Balanza'],['tipo_instrumento'=>'Balanza','tipo_servicio'=>'Mantenimiento','tarea_id'=>2]] as $extra) {
+            try { $this->controller->extra($this->req(['confirmado'=>true,'version_actual'=>$this->version(),'instrumento_extra'=>$extra]),1); $this->fail(); }
+            catch (ValidationException $e) { $this->assertNotEmpty($e->errors()); }
+        }
+        DB::table('tb_tareas_tecnicos')->where('id',1)->update(['estado'=>'completada']);
+        try { $this->controller->extra($this->req(['confirmado'=>true,'version_actual'=>$this->version(),
+            'instrumento_extra'=>['tipo_instrumento'=>'Balanza','tipo_servicio'=>'Mantenimiento']]),1); $this->fail(); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('estado',$e->errors()); }
+        $this->assertSame(2,DB::table('tb_instrumento_tarea')->count());
+    }
+
     public function test_lectura_no_crea_snapshot_y_oculta_ajenos(): void
     {
         $this->version(); $this->assertSame(0, DB::table('reportes')->count());
@@ -135,6 +202,16 @@ class ReportesSistemaTest extends TestCase
         $this->expectException(ValidationException::class);
         $this->controller->diagnostico($this->req($this->payload()), 1);
     }
+    public function test_resultado_rechaza_campos_retirados_y_textos_vacios_sin_crear_snapshot(): void
+    {
+        foreach ([['observaciones_finales'=>'No'], ['n_cotizacion'=>'No'], ['repuestos_instalados'=>'No'], ['trabajos_realizados'=>'   '], ['trabajos_realizados'=>null]] as $cambio) {
+            $p=$cambio + ['instrumento_tarea_id'=>1,'confirmado'=>true,'version_actual'=>$this->version(),'trabajos_realizados'=>'Resultado'];
+            try { $this->controller->resultado($this->req($p),1); $this->fail('Debió rechazar los datos'); }
+            catch (ValidationException $e) { $this->assertNotEmpty($e->errors()); }
+        }
+        $this->assertSame(0,DB::table('reportes')->count());
+        $this->assertSame(0,DB::table('informes_finales')->count());
+    }
 
     public function test_gerencia_ajeno_y_cerrado_siguen_reglas(): void
     {
@@ -159,7 +236,8 @@ class ReportesSistemaTest extends TestCase
         $p = ['instrumento_extra'=>['tipo_instrumento'=>'Termómetro','material'=>'Acero','clase_tipo_metrologico'=>'II','tipo_servicio'=>'Reparación'],
             'confirmado'=>true,'version_actual'=>$this->version(),'trabajos_realizados'=>'Reparado'];
         $this->controller->resultado($this->req($p),1);
-        $extra=DB::table('reportes_instrumentos')->whereNull('instrumento_tarea_id')->first();
+        $base=DB::table('tb_instrumento_tarea')->where('agregado_en_campo',1)->first();
+        $extra=DB::table('reportes_instrumentos')->where('instrumento_tarea_id',$base->id)->first();
         $this->assertSame('Reparación',$extra->tipo_servicio); $this->assertSame('II',$extra->clase_tipo_metrologico);
         $this->expectException(ValidationException::class);
         try { $this->controller->resultado($this->req($p),1); }
@@ -175,7 +253,7 @@ class ReportesSistemaTest extends TestCase
 
     public function test_campos_suplantacion_confirmacion_y_limites(): void
     {
-        foreach ([['tecnico_id'=>999],['confirmado'=>false],['fallas_detectadas'=>'   '],
+        foreach ([['trabajos_sugeridos'=>'No permitido'],['repuestos_sugeridos'=>'No permitido'],['tecnico_id'=>999],['confirmado'=>false],['fallas_detectadas'=>'   '],
             ['fallas_detectadas'=>str_repeat('a',10001)],['reporte_instrumento_id'=>1]] as $cambio) {
             try { $this->controller->diagnostico($this->req($this->payload($cambio)),1); $this->fail('Debió rechazar datos'); }
             catch (ValidationException $e) { $this->assertNotEmpty($e->errors()); }
@@ -204,7 +282,7 @@ class ReportesSistemaTest extends TestCase
         $this->controller->caracteristicas($this->req($p),1);
         $this->assertSame('Marca',DB::table('reportes_instrumentos')->value('marca'));
         $this->assertSame('ABC',DB::table('reportes_instrumentos')->value('serie'));
-        $this->assertNull(DB::table('tb_instrumento_tarea')->where('id',1)->value('serie'));
+        $this->assertSame('ABC',DB::table('tb_instrumento_tarea')->where('id',1)->value('serie'));
         $this->controller->diagnostico($this->req($this->payload()),1);
         $p['version_actual']=$this->version();
         $this->expectException(ValidationException::class);

@@ -75,6 +75,7 @@ use App\Mcp\Tools\ServicioTecnicoBuscarHistorialReportesTool;
 use App\Mcp\Tools\ServicioTecnicoBuscarHojasSalidaTool;
 use App\Mcp\Tools\ServicioTecnicoBuscarReportesTool;
 use App\Mcp\Tools\ServicioTecnicoEditarCaracteristicasReporteTool;
+use App\Mcp\Tools\ServicioTecnicoAgregarInstrumentoExtraTool;
 use App\Mcp\Tools\ServicioTecnicoEditarInformeReporteTool;
 use App\Mcp\Tools\ServicioTecnicoEditarInstrumentoHojaSalidaTool;
 use App\Mcp\Tools\ServicioTecnicoEditarInstrumentoReporteTool;
@@ -277,6 +278,7 @@ actas usan tarea_id como hoja de salida; PDF para firma manual y archivo firmado
         ServicioTecnicoRegistrarInformeTool::class,
         ServicioTecnicoRegistrarResultadoTool::class,
         ServicioTecnicoEditarCaracteristicasReporteTool::class,
+        ServicioTecnicoAgregarInstrumentoExtraTool::class,
 
             // Historial de reportes y finalización del servicio
             // ServicioTecnicoBuscarHistorialReportesTool::class,
