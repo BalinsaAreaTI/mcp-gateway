@@ -121,6 +121,43 @@ class CotizacionDesdeInformeTest extends TestCase
         $this->assertSame('DIRECTA', DB::table('cservicios')->value('n_informe'));
     }
 
+    public function test_shared_work_for_selected_group_and_individual_work_preserves_selection(): void
+    {
+        foreach ([22,23,24] as $id) {
+            DB::table('reportes_instrumentos')->insert(['id'=>$id,'reporte_id'=>9,'tipo_instrumento'=>'Balanza','serie'=>'S'.$id]);
+            DB::table('diagnosticos')->insert(['id'=>$id+100,'reporte_instrumento_id'=>$id,'fallas_detectadas'=>'Informe','trabajos_sugeridos'=>null]);
+        }
+        $shared='Limpieza y ajuste general';
+        (new McpCotizacionesController)->registrarServicioDesdeInforme($this->request(['instrumentos'=>[
+            ['id'=>21,'precio'=>100,'trabajos'=>$shared],
+            ['id'=>23,'precio'=>200,'trabajos'=>$shared],
+            ['id'=>24,'precio'=>300,'trabajos'=>'Cambio de sensor'],
+        ]]));
+        $lines=DB::table('instru_cotserv_directa')->orderBy('id')->get();
+        $this->assertSame([21,23,24],$lines->pluck('reporte_instrumento_id')->all());
+        $this->assertSame([$shared,$shared,'Cambio de sensor'],$lines->pluck('trabajos')->all());
+        $this->assertEquals(708,DB::table('cservicios')->value('total'));
+        $this->assertNull(DB::table('diagnosticos')->where('reporte_instrumento_id',22)->value('trabajos_sugeridos'));
+    }
+
+    public function test_same_work_can_be_applied_to_all_selected_including_extra(): void
+    {
+        DB::table('tb_tareas_tecnicos')->insert(['id'=>5]);
+        DB::table('reportes')->where('id',9)->update(['tarea_id'=>5]);
+        DB::table('tb_instrumento_tarea')->insert(['id'=>102,'tarea_id'=>5,'tipo_instrumento'=>'Balanza','serie'=>'EX-102','agregado_en_campo'=>1]);
+        DB::table('reportes_instrumentos')->insert(['id'=>22,'reporte_id'=>9,'instrumento_tarea_id'=>102,'tipo_instrumento'=>'Balanza']);
+        DB::table('diagnosticos')->insert(['id'=>31,'reporte_instrumento_id'=>22,'fallas_detectadas'=>'Informe extra','trabajos_sugeridos'=>null]);
+        $shared='Mantenimiento preventivo';
+        (new McpCotizacionesController)->registrarServicioDesdeInforme($this->request(['instrumentos'=>[
+            ['id'=>21,'precio'=>100,'trabajos'=>$shared],['id'=>22,'precio'=>100,'trabajos'=>$shared],
+        ]]));
+        $lines=DB::table('instru_cotserv_directa')->orderBy('id')->get();
+        $this->assertSame([21,22],$lines->pluck('reporte_instrumento_id')->all());
+        $this->assertSame([$shared,$shared],$lines->pluck('trabajos')->all());
+        $this->assertSame('EX-102',$lines[1]->numero_serie);
+        $this->assertEquals(1,$lines[1]->agregado_en_campo);
+    }
+
     public function test_save_requires_work_for_every_selected_instrument_even_if_source_has_suggestions(): void
     {
         foreach ([['id'=>21,'precio'=>10], ['id'=>21,'precio'=>10,'trabajos'=>null],
