@@ -284,19 +284,19 @@ actas usan tarea_id como hoja de salida; PDF para firma manual y archivo firmado
         ServicioTecnicoAgregarInstrumentoExtraTool::class,
 
             // Historial de reportes y finalización del servicio
-            // ServicioTecnicoBuscarHistorialReportesTool::class,
-            // ServicioTecnicoResumenHistorialReportesTool::class,
-            // ServicioTecnicoVerReporteHistorialTool::class,
-            // ServicioTecnicoVerInstrumentosReporteTool::class,
-            // ServicioTecnicoVerEstadoServicioTool::class,
+        ServicioTecnicoBuscarHistorialReportesTool::class,
+        ServicioTecnicoResumenHistorialReportesTool::class,
+        ServicioTecnicoVerReporteHistorialTool::class,
+        ServicioTecnicoVerInstrumentosReporteTool::class,
+        ServicioTecnicoVerEstadoServicioTool::class,
             // ServicioTecnicoFinalizarServicioTool::class,
 
             // Acciones del detalle y PDF por instrumento
-            // ServicioTecnicoVerAccionesReporteTool::class,
-            // ServicioTecnicoGenerarPdfReporteTool::class,
-            // ServicioTecnicoEditarInstrumentoReporteTool::class,
-            // ServicioTecnicoEditarInformeReporteTool::class,
-            // ServicioTecnicoEditarResultadoReporteTool::class,
+        ServicioTecnicoVerAccionesReporteTool::class,
+        ServicioTecnicoGenerarPdfReporteTool::class,
+        ServicioTecnicoEditarInstrumentoReporteTool::class,
+        ServicioTecnicoEditarInformeReporteTool::class,
+        ServicioTecnicoEditarResultadoReporteTool::class,
             // ServicioTecnicoFinalizarReporteTool::class,
 
             // Hojas de salida
