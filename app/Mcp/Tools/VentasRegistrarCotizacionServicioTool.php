@@ -18,7 +18,7 @@ class VentasRegistrarCotizacionServicioTool extends Tool
 
     protected string $title = 'Registrar cotización por servicio';
 
-    protected string $description = 'Crea UNA cotización por servicio DIRECTA (sin informe técnico; estado Pendiente) a nombre del usuario conectado, con uno o más instrumentos; el sistema calcula subtotal, IGV (18%) y total. Para cotizaciones desde un informe técnico usa ventas_registrar_cotizacion_servicio_desde_informe, previa consulta con ventas_ver_informe_cotizable. ANTES de llamarla: (1) obtén el id del cliente con ventas_buscar_clientes: el sistema rechaza clientes asignados a otro asesor (salvo clientes vencidos, con última factura de más de 2 meses) y clientes que ya tengan una cotización por servicio Pendiente de los últimos 14 días; (2) elige con el usuario la plantilla en ventas_plantillas_servicio; (3) consulta ventas_filtros_cotizaciones para escribir moneda, forma de pago, garantía, plazo y validez como ya se usan; (4) pregunta lo que falte (tipo de instrumento, trabajos, precio de cada uno, forma de pago) sin inventarlo; los datos técnicos (marca, modelo, capacidad) pueden completarse después, pero son obligatorios para pasar a Aceptado; (5) muestra un resumen completo y pide confirmación explícita. Solo pueden registrar los roles Asesor de Ventas y Jefe de Ventas.';
+    protected string $description = 'Crea UNA cotización por servicio DIRECTA (sin informe técnico; estado Pendiente) a nombre del usuario conectado, con uno o más instrumentos; el sistema calcula subtotal, IGV (18%) y total. Para cotizaciones desde un informe técnico usa ventas_registrar_cotizacion_servicio_desde_informe, previa consulta con ventas_ver_informe_cotizable. ANTES de llamarla: (1) obtén el id del cliente con ventas_buscar_clientes: el sistema rechaza clientes asignados a otro asesor (salvo clientes vencidos, con última factura de más de 2 meses) y clientes que ya tengan una cotización por servicio Pendiente de los últimos 14 días; (2) elige con el usuario la plantilla en ventas_plantillas_servicio; (3) consulta ventas_filtros_cotizaciones para escribir moneda, forma de pago, garantía, plazo y validez como ya se usan; (4) pregunta lo que falte (tipo de instrumento, trabajos, precio de cada uno, forma de pago) sin inventarlo; los datos técnicos (marca, modelo, capacidad) pueden completarse después, pero son obligatorios para pasar a Aceptado; (5) muestra un resumen completo y pide confirmación explícita. Solo pueden registrar los roles Asesor de Ventas y Jefe de Ventas. Para condiciones del servicio ofrece usar las generales de ventas_filtros_cotizaciones o proponer una lista específica basada en los trabajos confirmados. No inventes compromisos: muestra el texto completo y pide aceptación antes de guardar. Envía condiciones como lista de textos; omitirla o enviar [] usa las generales. Las condiciones registradas se usan en vista previa, descarga y correo; una lista vacía usa las generales.';
 
     public function schema(JsonSchema $schema): array
     {
@@ -47,7 +47,7 @@ class VentasRegistrarCotizacionServicioTool extends Tool
             'garantia'      => $schema->string()->description('Garantía del servicio. Opcional.'),
             'plazo_entrega' => $schema->string()->description('Plazo de entrega (por defecto "3 días hábiles").'),
             'validez'       => $schema->string()->description('Validez de la oferta, p. ej. "15 días". Opcional.'),
-            'condiciones'   => $schema->array()->items($schema->string())->description('Condiciones del servicio. Opcional: si no se envían se usan las condiciones generales de la empresa.'),
+            'condiciones'   => $schema->array()->items($schema->string())->description('Lista de condiciones específicas acordadas según los trabajos (máximo 30, 1000 caracteres cada una). Omitir o enviar [] para usar las generales consultadas en ventas_filtros_cotizaciones.'),
             'fecha'         => $schema->string()->description('Fecha AAAA-MM-DD: hoy o hasta 7 días atrás (por defecto, hoy).'),
         ];
     }
@@ -66,7 +66,7 @@ class VentasRegistrarCotizacionServicioTool extends Tool
             'plazo_entrega' => $request->get('plazo_entrega'),
             'validez'       => $request->get('validez'),
             'fecha'         => $request->get('fecha'),
-            'condiciones'   => is_array($condiciones) ? array_values(array_filter($condiciones, 'is_string')) : null,
+            'condiciones'   => $condiciones,
             'instrumentos'  => $this->listaFiltrada($request->get('instrumentos'), [
                 'tipo', 'precio', 'titulo_servicio', 'trabajos', 'marca', 'modelo', 'numero_serie', 'capacidad_rango',
                 'resolucion_division', 'clase_tipo_metrologico', 'material', 'plataforma', 'clase_exactitud', 'bastago',

@@ -18,7 +18,7 @@ class VentasFiltrosCotizacionesTool extends Tool
 
     protected string $title = 'Valores para filtrar cotizaciones';
 
-    protected string $description = 'Devuelve los estados de cotización (y cuáles son definitivos), las categorías con sus subcategorías, los instrumentos, las monedas y los valores de forma de pago, días de entrega, validez, garantía y plazo que más se usan en cotizaciones. Consúltala antes de filtrar cotizaciones por categoría, subcategoría o instrumento, y antes de registrar una cotización para escribir esos datos igual que el resto; usa los nombres tal cual aparecen.';
+    protected string $description = 'Devuelve condiciones_servicio_por_defecto (lista general vigente para crear/restablecer condiciones de servicio) y los estados de cotización (y cuáles son definitivos), las categorías con sus subcategorías, los instrumentos, las monedas y los valores de forma de pago, días de entrega, validez, garantía y plazo que más se usan en cotizaciones. Consúltala antes de filtrar cotizaciones por categoría, subcategoría o instrumento, y antes de registrar una cotización para escribir esos datos igual que el resto; usa los nombres tal cual aparecen.';
 
     public function handle(Request $request): Response
     {

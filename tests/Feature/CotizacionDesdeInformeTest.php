@@ -17,7 +17,7 @@ class CotizacionDesdeInformeTest extends TestCase
     {
         parent::setUp();
         $central = getenv('MCP_CENTRAL_PATH') ?: dirname(base_path()).'/Sistema_Balinsa_23_10';
-        foreach (['Http/Controllers/Mcp/CotizacionesDesdeInforme', 'Http/Controllers/Mcp/McpCotizacionesController',
+        foreach (['Support/CondicionesServicio', 'Http/Controllers/Mcp/CotizacionesDesdeInforme', 'Http/Controllers/Mcp/McpCotizacionesController',
             'Services/InstrumentosServicioService', 'Models/InstrumentoTarea'] as $file) {
             require_once $central.'/app/'.$file.'.php';
         }
@@ -32,13 +32,13 @@ class CotizacionDesdeInformeTest extends TestCase
             'mcp.cotizaciones_roles_edicion' => ['Asesor de Ventas', 'Jefe de Ventas'],
             'mcp.roles_acceso_total' => ['Gerencia'],
             'mcp.cotizaciones_permiso_ver_todo' => 'ver todo',
-            'mcp.cotizacion_condiciones_servicio_generales' => ['Condición general'],
+            'cotizacion_pdf.servicio.condiciones_generales' => ['Condición general'],
         ]);
         DB::purge('cotizacion_test');
         $this->assertSame(':memory:', DB::connection()->getConfig('database'));
         Schema::create('clientes', function (Blueprint $t) {
             $t->id(); $t->string('razonSocial'); $t->integer('asesor')->nullable();
-            foreach (['numeroDocumento', 'direccion', 'fechafactura', 'estado_eliminado'] as $c) { $t->string($c)->nullable(); }
+            foreach (['nom_comercial', 'numeroDocumento', 'direccion', 'fechafactura', 'estado_eliminado'] as $c) { $t->string($c)->nullable(); }
         });
         Schema::create('users', function (Blueprint $t) { $t->id(); $t->string('name'); });
         Schema::create('reportes', function (Blueprint $t) { $t->id(); $t->integer('tarea_id')->nullable(); $t->integer('cliente_id'); $t->string('n_servicio'); $t->string('fecha'); });
@@ -119,6 +119,121 @@ class CotizacionDesdeInformeTest extends TestCase
         ]));
         $this->assertSame('directa', $result->getData(true)['origen']);
         $this->assertSame('DIRECTA', DB::table('cservicios')->value('n_informe'));
+    }
+
+    private function commercialPayload(): array
+    {
+        return ['validez' => '7 Día(s)', 'forma_pago' => '50% anticipo', 'plazo_entrega' => '5 días hábiles', 'garantia' => '6 Mes(es)'];
+    }
+
+    public function test_commercial_conditions_change_only_four_fields_for_both_origins(): void
+    {
+        $controller = new McpCotizacionesController;
+        foreach (['directa', 'informe'] as $origen) {
+            DB::table('cservicios')->delete();
+            DB::table('instru_cotserv_directa')->delete();
+            $response = $origen === 'directa'
+                ? $controller->registrarServicio($this->request(['cliente_id' => 1, 'instrumentos' => [['tipo' => 'Pesa', 'precio' => 10]]]))
+                : $controller->registrarServicioDesdeInforme($this->request());
+            $id = $response->getData(true)['id'];
+            $before = (array) DB::table('cservicios')->where('id', $id)->first();
+            $lines = DB::table('instru_cotserv_directa')->get()->toJson();
+            $result = $controller->condicionesComercialesServicio($this->request($this->commercialPayload() + [
+                'total' => 1, 'moneda' => 'USD', 'estado_servicio' => 'Aceptado', 'condiciones' => [],
+            ]), $id)->getData(true);
+            $this->assertTrue($result['actualizado']);
+            $after = (array) DB::table('cservicios')->where('id', $id)->first();
+            foreach (['validez' => 'validez', 'forma_pago' => 'fpago', 'plazo_entrega' => 'plazo_entrega', 'garantia' => 'garantia'] as $input => $column) {
+                $this->assertSame($this->commercialPayload()[$input], $after[$column]);
+                unset($before[$column], $after[$column]);
+            }
+            unset($before['updated_at'], $after['updated_at']);
+            $this->assertSame($before, $after);
+            $this->assertSame($lines, DB::table('instru_cotserv_directa')->get()->toJson());
+            $detail = $controller->verServicio($this->request(), $id)->getData(true);
+            $this->assertContains('condiciones_comerciales', $detail['acciones_permitidas']);
+            $this->assertSame('50% anticipo', $detail['forma_pago']);
+        }
+    }
+
+    public function test_commercial_validation_is_atomic_and_edit_permissions_are_preserved(): void
+    {
+        $controller = new McpCotizacionesController;
+        $id = $controller->registrarServicioDesdeInforme($this->request())->getData(true)['id'];
+        $before = (array) DB::table('cservicios')->where('id', $id)->first();
+        foreach ([[], ['garantia' => '   '], ['validez' => str_repeat('x', 101)], ['forma_pago' => ['invalido']]] as $invalid) {
+            $payload = $invalid ? array_replace($this->commercialPayload(), $invalid) : [];
+            try {
+                $controller->condicionesComercialesServicio($this->request($payload), $id);
+                $this->fail('Expected validation error');
+            } catch (ValidationException $e) { $this->assertNotEmpty($e->errors()); }
+            $this->assertSame($before, (array) DB::table('cservicios')->where('id', $id)->first());
+        }
+        foreach (['Aceptado', 'Rechazado', 'Finalizado'] as $state) {
+            DB::table('cservicios')->where('id', $id)->update(['estado_servicio' => $state]);
+            try {
+                $controller->condicionesComercialesServicio($this->request($this->commercialPayload()), $id);
+                $this->fail('Expected definitive state rejection');
+            } catch (ValidationException $e) { $this->assertNotEmpty($e->errors()); }
+        }
+        DB::table('cservicios')->where('id', $id)->update(['estado_servicio' => 'Pendiente']);
+        try {
+            $controller->condicionesComercialesServicio($this->request($this->commercialPayload(), 'Administracion'), $id);
+            $this->fail('Expected role rejection');
+        } catch (HttpException $e) { $this->assertSame(403, $e->getStatusCode()); }
+        DB::table('cservicios')->where('id', $id)->update(['id_asesor' => 88]);
+        try {
+            $controller->condicionesComercialesServicio($this->request($this->commercialPayload()), $id);
+            $this->fail('Expected ownership rejection');
+        } catch (HttpException $e) { $this->assertSame(404, $e->getStatusCode()); }
+        $this->assertTrue($controller->condicionesComercialesServicio($this->request($this->commercialPayload(), 'Gerencia'), $id)->getData(true)['actualizado']);
+        DB::table('cservicios')->where('id', $id)->update(['estado_cotserv' => 0]);
+        try {
+            $controller->condicionesComercialesServicio($this->request($this->commercialPayload(), 'Gerencia'), $id);
+            $this->fail('Expected deleted quote rejection');
+        } catch (HttpException $e) { $this->assertSame(404, $e->getStatusCode()); }
+    }
+
+    public function test_conditions_are_saved_for_both_origins_and_empty_uses_current_defaults(): void
+    {
+        config(['cotizacion_pdf.servicio.condiciones_generales' => ['General vigente']]);
+        $controller = new McpCotizacionesController;
+        foreach (['directa', 'informe'] as $origen) {
+            foreach ([null, [], [' Repuestos incluidos, según trabajos. ', 'Entrega coordinada.']] as $conditions) {
+                DB::table('cservicios')->delete();
+                DB::table('instru_cotserv_directa')->delete();
+                $extra = ['condiciones' => $conditions];
+                if ($origen === 'directa') {
+                    $extra += ['cliente_id' => 1, 'instrumentos' => [['tipo' => 'Pesa', 'precio' => 10]]];
+                    $controller->registrarServicio($this->request($extra));
+                } else {
+                    $controller->registrarServicioDesdeInforme($this->request($extra));
+                }
+                $this->assertSame($conditions ? ['Repuestos incluidos, según trabajos.', 'Entrega coordinada.'] : ['General vigente'],
+                    json_decode(DB::table('cservicios')->value('condiciones_servicio'), true));
+            }
+        }
+    }
+
+    public function test_edit_reset_and_detail_agree_on_effective_conditions(): void
+    {
+        config(['cotizacion_pdf.servicio.condiciones_generales' => ['General vigente']]);
+        $controller = new McpCotizacionesController;
+        $id = $controller->registrarServicioDesdeInforme($this->request(['condiciones' => ['Inicial']]))->getData(true)['id'];
+        $controller->condicionesServicio($this->request(['condiciones' => ['Personalizada, sin dividir comas.']]), $id);
+        $detail = $controller->verServicio($this->request(), $id)->getData(true);
+        $this->assertSame(['Personalizada, sin dividir comas.'], $detail['condiciones_servicio']);
+        $this->assertSame('registradas', $detail['condiciones_servicio_origen']);
+        $reset = $controller->condicionesServicio($this->request(['condiciones' => []]), $id)->getData(true);
+        $this->assertSame([], $reset['condiciones']);
+        $this->assertSame(['General vigente'], $reset['condiciones_efectivas']);
+        $detail = $controller->verServicio($this->request(), $id)->getData(true);
+        $this->assertSame([], $detail['condiciones_servicio_registradas']);
+        $this->assertSame(['General vigente'], $detail['condiciones_servicio']);
+        $this->assertSame('por_defecto', $detail['condiciones_servicio_origen']);
+        $request = $this->request();
+        $this->expectException(ValidationException::class);
+        $controller->condicionesServicio($request, $id);
     }
 
     public function test_shared_work_for_selected_group_and_individual_work_preserves_selection(): void
